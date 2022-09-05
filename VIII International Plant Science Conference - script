@@ -1,0 +1,735 @@
+An Rmarkdown document
+---
+Title: 'A comparison of classification algorithms in plant systematics the case study
+  of Armeria denticulata_ complex'
+author: "Manuel Tiburtini, Luca Sandroni, Giovanni Astuti, Lorenzo Peruzzi"
+script author: "Manuel Tiburtini"
+date: '2022-05-11'
+
+Script: This script has been used to produce the results and figures in the poster presented in Bologna at the VIII International Plant Science Conference from 7-10 
+september 2022. 
+
+Input Dataset (private): The dataset contains morphometric data collected from 4 population in Toscany of the Armeria denticulata group. In total there are 79 
+individuals and 48 features that range from quantitiative continuous to qualitative were measured. The final dataset used to train the models was 79x31, 
+i.e. only quantiative features were retained and vernal leaves data were removed for having too many NAs.
+
+Output: The output consists in the PCoA of the 4 population, the construction on the decision boundaries, the comparison of the metric of the four models
+(Regularized Logistic Regression, Linear Discriminant Analysis, Random Forest, kNN) on the full dataset (overfit) and on the Cross Validated one. 
+ROC and AUC were also computed and plotted. 
+
+Abbreviations glossary: .df=dataframe .vr=vernal removed .oc=Outliers corrected .num=numeric
+  .st=standardized .sc=scaled .corr= correlation .mod=modello .multinom=multinomiale
+
+Disclaimer: The code is given as it is. It works in chunks and some manipulation may be needed if you want to use it. 
+It may be subjected to further changes and improvement in the future.
+
+References : 
+James,G., Witten, D., Hastie, T., Tibshirani,  R. (2014). An introduction to Statistical Learning with application in R. Second Edition, Springer. https://www.statlearning.com
+Fox, J., (2015). Applied Regression Analysis and Generalized Linear Models. Third edition. 816 pp. SAGE Publications, Inc. https://us.sagepub.com/en-us/nam/applied-regression-analysis-and-generalized-linear-models/book237254#description
+Grandini, M., Bagli, E., & Visani, G. (2020). Metrics for Multi-Class Classification: An Overview (arXiv:2008.05756). arXiv. http://arxiv.org/abs/2008.05756
+Unal, I. (2017). Defining an Optimal Cut-Point Value in ROC Analysis: An Alternative Approach. Computational and Mathematical Methods in Medicine, 2017, 1–14. https://doi.org/10.1155/2017/3762651
+Fawcett, T., (2006). An introduction to ROC analysis. Pattern Recongnition Letters, 27, 861-874. doi:10.1016/j.patrec.2005.10.010
+Zuur, A. F., Ieno, E. N., & Elphick, C. S. (2010). A protocol for data exploration to avoid common statistical problems: Data exploration. Methods in Ecology and Evolution, 1(1), 3–14. https://doi.org/10.1111/j.2041-210X.2009.00001.x
+Many resource and tips were also found on various topics on cross-validated and stack overflows.
+
+Acknowledgement: We thank Prof. Alessandro Massolo and Dimitri Giunchi for their course in Advanced Biostatistics and some talks that we have
+about this project.
+---
+
+```{r - 1. Import dataframe}
+ denticulata.df <- read.csv("~/Desktop/Nuova cartella/Armeria denticualata.csv", sep=",", stringsAsFactors = TRUE)
+    View(denticulata.df)
+```
+
+    ```{r 2. Data stucture and data preparation for analyses}
+    library(mice) #NA exploring
+    library(dplyr)
+    str(denticulata.df)
+    summary(denticulata.df)
+
+    denticulata.df$N_NERV_EST <- as.factor(denticulata.df$N_NERV_EST)
+
+
+    #NA distribution and removal
+    md.pattern(denticulata.df, plot = TRUE, rotate.names = TRUE) #le foglie vernali hanno troppi NA
+
+    denticulata.df.vr <- denticulata.df[,-c(11:17)] #vernal removed
+
+    md.pattern(denticulata.df.vr, plot = TRUE, rotate.names = TRUE) #No NA
+
+
+    #dataset scaling and subsetting
+    denticulata.df.vr.num <- denticulata.df.vr %>% dplyr::select(TAXON, where(is.numeric)) 
+
+    denticulata.df.vr.num.sc <- denticulata.df.vr.num %>% select(TAXON) %>%            mutate(as.data.frame(scale(denticulata.df.vr.num[,-1]))) # scaled dataset
+
+    denticulata.df.vr.fac<- denticulata.df.vr %>% dplyr::select(TAXON, COD_LOC, where(is.factor))#categorical
+    ```
+
+```{r - 3. Graphical exploration of data}
+library(GGally)
+library(tidyverse)
+library(ggplot2)
+library(univOutl)
+library(glue)
+library(ggsignif)
+library(ggpubr)
+    #GGpairs
+    ggpairs(denticulata.df.vr %>%  select(c(starts_with("TAXON"), where(is.numeric))), columns = 2:11, ggplot2::aes(colour=TAXON), progress = FALSE)
+
+    ggpairs(denticulata.df.vr %>%  select(c(starts_with("TAXON"), where(is.numeric))), columns = 12:22, ggplot2::aes(colour=TAXON),progress = FALSE)
+
+    ggpairs(denticulata.df.vr %>%  select(c(starts_with("TAXON"), where(is.numeric))), columns = 23:31, ggplot2::aes(colour=TAXON),progress = FALSE)
+```
+
+```{r - 4. Cheching and removing outliers}
+
+#Outlayer could be checked and removed from the distribution of the data with this script. After some thought, we considered more appropriate to leave in place. 
+
+library(dplyr)
+library(univOutl)
+
+#k is the arbitrary threshold for considerng a point as OL
+for (i in colnames(denticulata.df.vr %>% select_if(is.numeric))){ OL<- LocScaleB(denticulata.df.vr[denticulata.df.vr$COD_LOC=="PP",][[i]], k=3.5, method='IQR')$outliers 
+print(i) 
+print(OL) }
+
+indx.PP<- unique(c(1,5,12,9,2,14))
+
+for (i in colnames(denticulata.df.vr %>% select_if(is.numeric))){ OL<- LocScaleB(denticulata.df.vr[denticulata.df.vr$COD_LOC=="BP",][[i]], k=3.5, method='IQR')$outliers 
+print(i)
+print(OL) }
+
+indx.BP<- unique(c(1,11))
+
+for (i in colnames(denticulata.df.vr %>% select_if(is.numeric))){ OL<- LocScaleB(denticulata.df.vr[denticulata.df.vr$COD_LOC=="ST",][[i]], k=3.5, method='IQR')$outliers 
+print(i) 
+print(OL) } 
+indx.ST<- unique(c(17,13,5,19))
+
+for (i in colnames(denticulata.df.vr %>% select_if(is.numeric))){ OL<- LocScaleB(denticulata.df.vr[denticulata.df.vr$COD_LOC=="MF",][[i]], k=3.5, method='IQR')$outliers 
+print(i)
+print(OL) }
+indx.MF<- unique(c(5,10,20))
+
+################# 
+
+denticulata.df.vr.oc.BP <- filter(denticulata.df.vr, COD_LOC == "BP")[-indx.BP,] 
+denticulata.df.vr.oc.MF <- filter(denticulata.df.vr, COD_LOC == "MF")[-indx.MF,] 
+denticulata.df.vr.oc.PP <- filter(denticulata.df.vr, COD_LOC == "PP")[-indx.PP,] 
+denticulata.df.vr.oc.ST <- filter(denticulata.df.vr, COD_LOC == "ST")[-indx.ST,] 
+denticulata.df.vr.oc <- rbind(denticulata.df.vr.oc.BP,denticulata.df.vr.oc.MF,denticulata.df.vr.oc.PP,denticulata.df.vr.oc.ST)
+
+dim(denticulata.df.vr.oc)
+
+#check the results with boxplot denticulata.df.vr.pl.oc \<- pivot_longer(denticulata.df.vr.oc %\>% select(c(starts_with("COD_LOC"), where(is.numeric))), cols = 10:20, names_to = "character", values_to = "value")
+
+plot2 <- ggplot(denticulata.df.vr.pl.oc, aes(x = character, y = value, col = COD_LOC)) + geom_boxplot() + theme_bw() + theme(legend.position = "right")+ ggtitle("ol removed")
+
+
+```
+
+```{r - 5. Checking normality and homogeneity of variance}
+library(MVN)
+library(heplots)#for ellipse and boxM
+#data
+
+denticulata.df.vr.num
+
+#Univariate and multivariate normality 
+#Univariate normality
+denticulata.df.vr.num %>% 
+  group_by(COD_LOC) %>% 
+  summarise(pnorm_ALT = shapiro.test(ALT)$p.value,#1 
+             pnorm_NUM_SCAP = shapiro.test(NUM_SCAP)$p.value,#2 
+             pnorm_LUNG_SCAP = shapiro.test(LUNG_SCAP)$p.value,#3 
+             pnorm_DIAM_SCAP = shapiro.test(DIAM_SCAP)$p.value,#4 
+             pnorm_SPES_MAR_EST = shapiro.test(SPES_MAR_EST)$p.value,#5  
+             pnorm_ANG_APICE_EST = shapiro.test(ANG_APICE_EST)$p.value,#6 
+             pnorm_LUNG_FOG_EST = shapiro.test(LUNG_FOG_EST)$p.value,#7 
+             pnorm_LAR_FOG_EST = shapiro.test(LAR_FOG_EST)$p.value,#8 
+             pnorm_LUNG_GUA = shapiro.test(LUNG_GUA)$p.value,#9 
+             pnorm_N_SQUAM = shapiro.test(N_SQUAM)$p.value,#10
+             pnorm_LUNG_SQUAM_EST = shapiro.test(LUNG_SQUAM_EST)$p.value,#11
+             pnorm_LAR_SQUAM_EST = shapiro.test(LAR_SQUAM_EST)$p.value,#12
+             pnorm_LUNG_SQUAM_INTER = shapiro.test(LUNG_SQUAM_INTER)$p.value,#13
+             pnorm_LAR_SQUAM_INTER = shapiro.test(LAR_SQUAM_INTER)$p.value,#14
+             pnorm_LUNG_SQUAM_INT = shapiro.test(LUNG_SQUAM_INT)$p.value,#15
+             pnorm_LAR_SQUAM_INT = shapiro.test(LAR_SQUAM_INT)$p.value,#16
+             pnorm_DIAM_CAP = shapiro.test(DIAM_CAP)$p.value,#17
+             pnorm_LUNG_BRAT_SPI_INT = shapiro.test(LUNG_BRAT_SPI_INT)$p.value,#18
+             pnorm_LAR_BRAT_SPI_INT = shapiro.test(LAR_BRAT_SPI_INT)$p.value,#19
+             pnorm_LUNG_BRATLA_SPI_INT = shapiro.test(LUNG_BRATLA_SPI_INT)$p.value,#20
+             pnorm_LAR_BRATLA_SPI_INT = shapiro.test(LAR_BRATLA_SPI_INT)$p.value,#21
+             pnorm_LUNG_BRAT_SPI_EST= shapiro.test(LUNG_BRAT_SPI_EST)$p.value,#22
+             pnorm_LAR_BRAT_SPI_EST = shapiro.test(LAR_BRAT_SPI_EST)$p.value,#23
+             pnorm_LUNG_BRATLA_SPI_EST = shapiro.test(LUNG_BRATLA_SPI_EST)$p.value,#24
+             pnorm_LAR_BRATLA_SPI_EST = shapiro.test(LAR_BRATLA_SPI_EST)$p.value,#25
+             pnorm_LUNG_PED_CAL = shapiro.test(LUNG_PED_CAL)$p.value,#26
+             pnorm_LUNG_TUBO = shapiro.test(LUNG_TUBO)$p.value,#27
+             pnorm_LARG_TUBO = shapiro.test(LARG_TUBO)$p.value,#28
+             pnorm_LUNG_LEMBO = shapiro.test(LUNG_LEMBO)$p.value,#29
+             pnorm_LUNG_RESTA = shapiro.test(LUNG_RESTA)$p.value)#30
+  
+
+#Multivariate normality
+mvn.denticulata <- mvn(denticulata.df.vr.num,
+  subset = "TAXON",
+  mvnTest = "mardia",
+  covariance = TRUE,
+  tol = 1e-25,
+  alpha = 0.5,
+  scale = FALSE,
+  desc = TRUE,
+  transform = "none",
+  R = 1000,
+  univariateTest = "SW",
+  univariatePlot = "qq",
+  multivariatePlot = "qq",
+  bc = FALSE,
+  bcType = "rounded",
+  showOutliers = FALSE,
+  showNewData = FALSE) 
+
+
+mvn.denticulata$multivariateNormality$denticulata
+mvn.denticulata$multivariateNormality$saviana
+mvn.denticulata$
+
+summary(mvn.denticulata)
+View(mvn.denticulata)
+
+#Univariate and multivariate homogeneity of variance 
+
+#Multivariate homogeneity of mariance
+boxM.test <- boxM(denticulata.df.vr.num[, 2:20], denticulata.df.vr.num[, "TAXON"])# Homogeninity of multivariate variances violated.
+summary(boxM.test)
+#visual Inspection
+plot(boxM.test)
+
+#plots of univariate covariance ellipses: differences in size between classes indicates dishomogeneity of variances (useful for LDA).
+heplots::covEllipses(denticulata.df.vr.num[,2:19], 
+                     denticulata.df.vr.num$TAXON, 
+                     fill = TRUE, 
+                     pooled = FALSE, 
+                     col = c("blue", "red"), 
+                     variables = c(1:5, 8), 
+                     fill.alpha = 0.05) 
+
+#When there is overlap ambong bars, data presents no evidence for heterogeneity. Data are not homogeneous.
+#more info at https://arxiv.org/pdf/1805.05756.pdf
+
+```
+
+```{r 6. Observing correlation and collinearity}
+library(tidyverse)
+library(caret)
+library(corrplot)
+
+corr.test <- cor.mtest(cor(denticulata.df.vr.num[,-c(1,2)]))
+corrplot(cor(denticulata.df.vr.num[,-c(1,2)]), p.mat=corr.test$p, sig.level =0.05, insig = "blank",  type="lower", method=c("number"),  tl.cex=.3	,number.cex=0.3)
+
+
+```
+
+```{r 7. PCoA and PCAmix to explore the weight of the data}
+install.packages(EFAtools)
+install.packages(fossil)
+library(dplyr)
+library(EFAtools)
+library(FD)
+library(fossil)
+library(plotly)
+library(PCAmixdata)
+
+denticulata.df.vr # dataset
+
+#Testing suitabiliry of numeric variables for factorial data analysis
+
+KMO(denticulata.df.vr %>% dplyr::select(where(is.numeric))) # suitable for factorial analysis
+
+BARTLETT(denticulata.df.vr.oc %>% dplyr::select(where(is.numeric)), cor_method = c("pearson"))# suitable for factorial analysis
+ 
+denticulata.gowdis <- gowdis(denticulata.df.vr.num, asym.bin=NULL) #ord=c("podani")) if ordinal data are present. absent in this case
+
+#testing triangle inequality
+
+tri.ineq(denticulata.gowdis) # not respected 
+
+
+#PCoA
+denticulata.pcoa <- pcoa(denticulata.gowdis, correction="cailliez")  #calliez correction for negative eigenvalues
+
+
+biplot(denticulata.pcoa, Y=scale(denticulata.df.vr.oc %>% dplyr::select(where(is.numeric))), labels=denticulata.df.vr.oc$COD_LOC)
+
+#calculation of the variance explained by the model
+
+denticulata.variance.PCOA <- round(denticulata.pcoa$values$Eigenvalues/sum(denticulata.pcoa$values$Eigenvalues)*100, 4) 
+
+barplot(denticulata.variance.PCOA, main="Variaza spiegata dagli assi dalla PCoA", sub="% della Varianza", col= c("#9DE199")) 
+
+#plotting the final graph 
+
+denticulata.coord <- data.frame(denticulata.df.vr$COD_LOC, denticulata.pcoa$vectors) 
+
+ggplot(denticulata.coord, aes(x = Axis.1,  y = Axis.2 ,color=denticulata.df.vr.oc$COD_LOC ,shape=denticulata.df.vr.oc$COD_LOC)) +
+theme(legend.title = element_blank(), 
+legend.text = element_text(hjust = 0.5, size=15), axis.text = element_text(size = 15, colour = "black"), axis.title = element_text(size = 15))+ geom_point(size=4)+ scale_colour_manual(name = "COD_LOC", 
+breaks = c("BP","MF","PP","ST"), alues=c( "#7CAE00",  "#7CAE00",   "#7CAE00", "#C77CFF")) +  scale_shape_manual(name = "COD_LOC", values=c(  15, 0,  1, 19 ), breaks = c("BP","MF","PP","ST"))+ 
+theme_bw() +   xlab(paste("Coord. 1 (",denticulata.variance.PCOA[1],"%)")) + 
+ ylab(paste("Coord. 2 (",denticulata.variance.PCOA[2],"%)")) +  
+labs(color = "subsp.", shape="LOCALITA")+ 
+theme(panel.grid = element_blank(),  
+egend.title = element_text(hjust = 0.5), axis.text = element_text(size = 15, colour = "black"), 
+ axis.title = element_text(size = 10, face = "bold"))+ 
+ggtitle(expression(atop(bold("PCoA of"),  atop(italic("Armeria denticulata"), "complex")))) 
+
+
+
+#PCAmix: a useful way to analyze mixed data and see loadings
+
+require(PCAmixdata)
+
+denticulata.pca.mixed <- PCAmix(scale(denticulata.df.vr.num[,-c(1,2)]),denticulata.df.vr.fac[,-c(1,2,3,4)],ndim=4, rename.level=TRUE, graph=TRUE) 
+  
+denticulata.pca.contr.quanti<- as.data.frame(denticulata.pca.mixed$quanti$contrib.pct) 
+denticulata.pca.contr.quali <- as.data.frame(denticulata.pca.mixed$quali$contrib.pct) 
+  
+denticulata.pca.contr.quanti[order(denticulata.pca.contr.quanti$`dim 1`),] 
+denticulata.pca.contr.quali[order(denticulata.pca.contr.quali$`dim 1`),] 
+
+#Qualitative data are not so informative. Only quantiativedata are reatined in order to reduce dimensionality.
+
+```
+
+```{r 8. Decision boundaries}
+
+#data
+denticulata.variance.PCOA
+  
+#functionn for constructing the decision boundaries (from https://github.com/codyfrisby/school/tree/master/info3130, adapted)
+boundary <- function(model, data, class = NULL, predict_type = "class", 
+  resolution = 100, showgrid = TRUE, ...) { 
+  
+  if(!is.null(class)) cl <- data[,class] else cl <- 1 
+  data <- data[,1:2] 
+  k <- length(unique(cl)) 
+   
+  mycol <- as.integer(cl) 
+  mycol2 <- gsub("1","coral1",mycol ) 
+  mycol2 <- gsub("2","deepskyblue3",mycol2 ) 
+  
+  plot(data, col = mycol2, pch = as.integer(denticulata.coord$denticulata.df.vr.COD_LOC), xlab=glue("Coord. 1"{denticulata.variance.PCOA[,1]"%"}), ylab="Coord.2 (12.4%)",cex=2,...) 
+  
+  # make grid 
+  r <- sapply(data, range, na.rm = TRUE) 
+  xs <- seq(r[1,1], r[2,1], length.out = resolution) 
+  ys <- seq(r[1,2], r[2,2], length.out = resolution) 
+  g <- cbind(rep(xs, each=resolution), rep(ys, time = resolution)) 
+  colnames(g) <- colnames(r) 
+  g <- as.data.frame(g) 
+  
+  ### guess how to get class labels from predict 
+  ### (unfortunately not very consistent between models) 
+  p <- predict(model, g, type = predict_type) 
+  if(is.list(p)) p <- p$class 
+  p <- as.factor(p) 
+   
+   
+  mycol3 <- as.integer(p) 
+  mycol4 <- gsub("1","coral1",mycol3 ) 
+  mycol4 <- gsub("2","deepskyblue3",mycol4 ) 
+  
+  
+  if(showgrid) points(g, col = mycol4, pch = ".",cex=2) 
+  
+  z <- matrix(as.integer(p), nrow = resolution, byrow = TRUE) 
+  contour(xs, ys, z, add = TRUE, drawlabels = FALSE, 
+    lwd = 2, levels = (1:(k-1))+.5) 
+  
+  invisible(z) 
+}
+ 
+#data 
+dec.bound.dat <- denticulata.coord[1:79, c("Axis.1", "Axis.2", "denticulata.df.vr.TAXON")] 
+  
+colnames(dec.bound.dat) <- c("Axis.1", "Axis.2", "TAXON") 
+  
+#kNN 
+dec.bound.dat <- denticulata.coord[1:79, c("Axis.1", "Axis.2", "denticulata.df.vr.TAXON")] 
+  
+colnames(dec.bound.dat) <- c("Axis.1", "Axis.2", "TAXON") 
+                            
+kNN.model <- knn3(TAXON ~ ., data=dec.bound.dat, k = 7) 
+boundary(kNN.model, dec.bound.dat, class = "TAXON", main = "kNN (k = 7)") 
+  
+#logistic regression 
+  
+LR <- glm(TAXON ~ ., data=dec.bound.dat, family=binomial(link='logit')) 
+  
+class(LR) <- c("lr", class(LR)) 
+  
+# specify the cutoff point for prediction 
+  
+predict.lr <- function(object, newdata, ...) 
+  predict.glm(object, newdata, type = "response") > .5 
+  
+boundary(LR, dec.bound.dat, class = "TAXON", main = "Logistic Regression") 
+  
+  
+#LDA 
+  
+library(MASS) 
+LDA <- lda(TAXON ~ ., data=dec.bound.dat) 
+boundary(LDA, dec.bound.dat, class = "TAXON", main = "LDA") 
+  
+#RandomForest 
+  
+library(randomForest) 
+  
+RF <- randomForest(TAXON ~ ., data=dec.bound.dat) 
+boundary(RF, dec.bound.dat, class = "TAXON", main = "Random Forest") 
+ 
+```
+#The dataset is very small. Dividing in training and testing would result in a further reduction of the individuals and thus, an increase of the problem 
+called "curse of dimentionality". For this reason the dataset hasn't been splitted in training and testing but model perfomances were measured using LOOCV.
+
+
+```{r 8. Linear Models:  Regularized Ridge Logistic Regression}
+#Our data suffer from what is called Curse of Dimensionality, this means that individuals are far less than variable. Fitting a normal logistic regression led to overfitting and no-sense betas.
+#A normal Machine Learning dataset has 4-5(9) columns and hundreds or thousand of cases. This is not so common when we are dealing with plant morphometric dataset. Three approaches can be used to deal with it: 
+#1) Principal component regression. 
+#2) Regularization (ridge, lasso or elastic net regression).
+#3) Recursive feature selection (Stepwise apporaches, Recursive Feature Elimination).
+
+#In the first contibution features selected with PCAmix were used and stepwise selection. However, I further explored the field finding that regularization could be more suited to the task. 
+#
+
+#Loading librarires and useful libraries
+library(MASS)
+library(tidyverse) #
+require(parameters) #parameter function
+require(performance)# r2_nagelkerke function
+library(ggeffects)#exploring regression models assumptions
+library(caret)#machine learning pachages
+library(RcmdrMisc)
+library(glmnet)#regularized logistic regression
+library(yardstick)#classification metrics and diagnostics
+library(workflows)
+
+#Standardization  of the data scale() is required!
+denticulata.df.vr.num.sc
+denticulata.predictors<- denticulata.df.vr.num.sc[,-c(1,2)]#to reduce correlation a variable is removed
+denticulata.response <- denticulata.df.vr.num.sc[,1]
+
+set.seed(42)
+
+
+#REGULARIZATION
+#Cross validated
+################################
+##
+## Interative selection of alpha and lamda
+##
+################################
+
+train.control <-  trainControl(method="LOOCV", classProbs = TRUE, savePredictions = TRUE)
+
+#pick the best lamda and alpha here 
+train(
+  TAXON ~ ., 
+  denticulata.df.vr.num.sc,
+  tuneGrid = expand.grid(
+    alpha = 0:1,
+    lambda = seq(0.0001, 1, length = 100)
+  ),
+  method = "glmnet",
+  trControl = train.control)
+
+#apply the best lamda and alpha to get the final LOOCV model
+regularized.LR.cv <- train(
+  TAXON ~ ., 
+  denticulata.df.vr.num.sc,
+  tuneGrid = expand.grid(
+    alpha = 0,
+    lambda = 0.091
+  ),
+  method = "glmnet",
+  trControl = train.control)
+
+
+regularized.LR.cv.class.data<- regularized.LR.cv$pred[,1:4]
+
+
+confusionMatrix(reference=regularized.LR.cv.class.data$obs, data=regularized.LR.cv.class.data$pred)
+
+
+#full dataset (retaining the alpha and lambda selected though cv)
+regularized.LR<- glmnet(denticulata.predictors, denticulata.response, family = "binomial", alpha=0, lambda= 0.091)
+
+regularized.LR.class.data<- data.frame(obs=denticulata.response, pred=as.factor(predict(regularized.LR, newx = as.matrix(denticulata.predictors), type = "class", s = 0.091)),  1-(predict(regularized.LR, newx = as.matrix(denticulata.predictors), type = "response", s = 0.091)),prob=(predict(regularized.LR, newx = as.matrix(denticulata.predictors), type = "response", s = 0.091)))
+
+colnames(regularized.LR.class.data) <- c("obs", "pred", "denticulata","saviana")
+
+confusionMatrix(reference=regularized.LR.class.data$obs, regularized.LR.class.data$pred)
+
+```
+
+```{r  Linear Discriminant analysis}
+
+library(MASS)
+library(caret)
+library(RcmdrMisc)
+library(dplyr)
+
+#scaled data 
+denticulata.df.vr.num.sc
+
+#LDA
+denticulata.LDA <- lda(TAXON ~ ., data = denticulata.df.vr.num.sc)
+denticulata.LDA
+
+#classification
+denticulata.LDA.pred <- denticulata.LDA %>% predict(denticulata.df.vr.num.sc[,-1]) #prediction made on the same dataset used for training 
+
+plot(denticulata.LDA.pred$x)
+
+LDA.class.data<- data.frame(obs=denticulata.df.vr.num.sc$TAXON, pred=denticulata.LDA.pred$class, denticulata=round(denticulata.LDA.pred$posterior, 4)[,1], saviana=round(denticulata.LDA.pred$posterior,4)[,2])
+
+confusionMatrix(LDA.class.data$pred, reference = LDA.class.data$obs)
+
+# Create ggplot2 histogram with default colors for  discrimintant function 1. (with 2 classes only one discriminant available)
+ggplot(data.frame(denticulata.LDA.pred$x), aes(denticulata.LDA.pred$x, fill = denticulata.df.vr.num.sc$TAXON)) +  
+  geom_histogram()
+
+#Testing model performances: Leave one out cross validation
+denticulata.LDA.LOOCV <-  lda(TAXON ~ ., data = denticulata.df.vr.num.sc, CV = TRUE)
+
+plot(denticulata.LDA.LOOCV$x)
+ggplot(data.frame(denticulata.LDA.LOOCV$x), aes(denticulata.LDA.pred$x, fill = denticulata.df.vr.num.sc$TAXON)) +  # Create ggplot2 histogram with default colors for LD1
+  geom_histogram()
+
+options(scipen=999)# remove scientific notation
+
+#builing the class data prediction and associate probabilities
+LDA.cv.class.data<- data.frame(pred=denticulata.LDA.LOOCV$class, obs=denticulata.df.vr.num.sc$TAXON, denticulata=round(denticulata.LDA.LOOCV$posterior, 4)[,1], saviana=round(denticulata.LDA.LOOCV$posterior,4)[,2])
+
+confusionMatrix(data = LDA.cv.class.data$obs, reference = LDA.cv.class.data$pred)
+
+```
+
+```{r Non linear Models : Random Forest}
+# Loading package
+library(caret)
+library(randomForest)
+
+#Decision tree (and random forest) are scale invariant, so scaling is not needed. 
+
+#data
+denticulata.df.vr.num
+
+# Fitting Random Forest on the whole dataset
+set.seed(42) # Setting seed
+
+denticulata.rf <- randomForest(x = denticulata.df.vr.num[,-1],denticulata.df.vr.num$TAXON,
+							ntree = 500, mtry=5, replace=TRUE, importance=TRUE, importanceSD=TRUE)
+
+
+plot(denticulata.rf, log="y")
+plot(c(0,1),type="n", axes=F, xlab="", ylab="")
+legend("top", colnames(denticulata.rf$err.rate),col=1:4,cex=0.8,fill=1:4)
+
+rf.class.data <- data.frame(obs=denticulata.df.vr.num$TAXON,pred=denticulata.rf$predicted, denticulata= denticulata.rf$votes[,1], saviana=denticulata.rf$votes[,2])
+
+# Confusion Matrix
+confusionMatrix(data=rf.class.data$pred, reference = rf.class.data$obs)
+
+# Variable importance plot
+varImpPlot(denticulata.rf)
+
+#Testing model performances: CROSS VALIDATION
+train.control <-  trainControl(method="LOOCV", classProbs = TRUE, savePredictions = TRUE)
+
+set.seed(42)
+
+#Model tuning
+train(TAXON ~ ., data=denticulata.df.vr.num, method='rf', metric = "Accuracy", trControl = train.control, tuneGrid = expand.grid(mtry = seq(1,15))) #optimal mtry=6
+
+#Cross validated model. 
+denticulata.rf.loocv<- train(TAXON ~ ., data=denticulata.df.vr.num, method='rf', metric = "Accuracy", trControl = train.control, tuneGrid = expand.grid(mtry = c(6)))
+
+rf.cv.class.data <- denticulata.rf.loocv$pred[,1:4]
+
+confusionMatrix(reference=rf.cv.class.data$obs, data=rf.cv.class.data$pred)
+
+```
+
+```{r kNN classification algorithm}
+#The starting point is selecting the number of K that should be the sqrt(nrow(df)) and this number should be odd. 64 observation = 8 rounded. optimal k can be also selected though recursive model tuning. 
+
+install.packages("class")
+library(caret)
+library(ggplot2)
+library(ggpubr)
+
+#knn uses a matrix dissimilarity as imput, the gower distance is commonly used, thus it doesn't require standardizaiton.
+
+#dataset
+denticulata.gowdis.df <- data.frame(TAXON=denticulata.df$TAXON, as.matrix(denticulata.gowdis))
+
+#full dataset
+denticulata.knn <- knn3(as.matrix(denticulata.gowdis),y=denticulata.df$TAXON, prob=TRUE, k = 5, use.all=TRUE) #i use knn3 to compute class problabilities
+  
+knn.prob<- predict(denticulata.knn, as.matrix(denticulata.gowdis), type = "prob")
+knn.class<- predict(denticulata.knn, as.matrix(denticulata.gowdis), type = "class")
+
+knn.class.data <- data.frame(obs=denticulata.df$TAXON, pred=knn.class, denticulata=knn.prob[,1], saviana=knn.prob[,2])
+
+caret::confusionMatrix(reference=knn.class.data$obs,data=knn.class.data$pred)
+
+#Testing model performances cross validation
+
+train.control <-  trainControl(method="LOOCV", classProbs = TRUE, savePredictions = TRUE)
+
+set.seed(42)
+#recursive k selection
+train(
+  TAXON~., 
+  denticulata.gowdis.df,
+  tuneLength = 15,
+  method = "knn",
+  trControl = train.control)
+
+
+denticulata.knn.loocv <- train(
+  TAXON~., 
+  denticulata.gowdis.df,
+  tuneGrid=data.frame(k=5),
+  method = "knn",
+  trControl = train.control)
+
+knn.cv.class.data <- denticulata.knn.loocv$pred[,1:4]
+caret::confusionMatrix(reference=knn.cv.class.data$obs,data=knn.cv.class.data$pred)
+```
+
+```{r sds}
+#building the ROC curves
+library(plotROC)
+library(ggtext)
+library(glue)
+library(yardstick)
+library(cutpointr)
+
+set.seed(42)
+
+#ROCs FOR THE FULL MODELS
+#Models
+regularized.LR.class.data
+LDA.class.data
+rf.class.data
+knn.class.data
+
+#preparing the data
+full.models<- data.frame((rbind(regularized.LR.class.data,LDA.class.data,rf.class.data,knn.class.data)), Model=stack(data.frame(rep("Logistic Regression", 79),rep("LDA", 79), rep("Random Forest", 79),rep("kNN (k=5)", 79)))[,1])
+full.models$Model <- factor(full.models$Model, levels = c("Logistic Regression", "LDA", "Random Forest", "kNN (k=5)"))
+
+#Building the roc curves
+full.model.rocs <- ggplot(full.models, aes(m = denticulata, d = obs, color=Model)) + 
+  geom_roc(increasing = FALSE, labels = TRUE, n.cuts = 0, size=2,linejoin = "round", lineend="round")+
+  coord_equal()+
+  geom_abline(colour='gray')+
+  xlab("False Positive Rate") + 
+  ylab("True Positive Rate")+
+  theme(plot.title = element_text(hjust = 0.5),legend.text = element_text(size=15, vjust=1),
+        legend.title = element_text(size=20),legend.title.align = 0.61, legend.key.width= unit(4, 'cm'),
+        panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        panel.background = element_blank(),axis.line = element_line(), legend.position = c(0.725,0.15),
+        legend.background = element_blank(),legend.key=element_blank(), legend.box.background = element_rect(colour = "gray", fill="transparent"))+
+  scale_color_manual(values = c("#E7B800", "#00BFC4", "#7CAE00","#F8766D")) 
+
+full.model.AUC<- full.model.rocs %>% calc_auc() %>% 
+  select(Model, AUC) %>% 
+  transmute(Model=Model, AUC=round(AUC,3)) %>% 
+  transmute(Model=Model, AUC=glue("AUC={AUC}"))%>%
+  rename(model=Model, label= AUC)
+
+regularized.LR.class.data
+LDA.class.data
+rf.class.data
+knn.class.data
+#Evaluating youden points
+plot(pROC::roc(regularized.LR.class.data$obs, predictor=regularized.LR.class.data$denticulata), print.thres="best",print.thres.best.method="youden", main="LR")
+plot(pROC::roc(LDA.class.data$obs, predictor=LDA.class.data$denticulata), print.thres="best",print.thres.best.method="youden", main="LDA")
+plot(pROC::roc(rf.class.data$obs, predictor=rf.class.data$denticulata), print.thres="best",print.thres.best.method="youden", main="RF")
+plot(pROC::roc(knn.class.data$obs, predictor=knn.class.data$denticulata), print.thres="best",print.thres.best.method="youden", main="kNN")
+
+
+cv.youden.points<- data.frame(j.cv.LR=0.522, j.cv.LDA=0.404, j.cv.RF=0.666, j.cv.kNN=0.5)
+
+
+picture.full.models <- full.model.rocs+
+geom_text(data = full.model.AUC, aes(x=0.615, y=0.152,label = label[1],colour=model[1]), inherit.aes=FALSE, check_overlap = TRUE,show.legend=FALSE)+
+geom_text(data = full.model.AUC, aes(x=0.615, y=0.119,label = label[2],colour=model[2]), inherit.aes=FALSE, check_overlap = TRUE,show.legend=FALSE)+
+geom_text(data = full.model.AUC, aes(x=0.635, y=0.085,label = label[3],colour=model[3]), inherit.aes=FALSE, check_overlap = TRUE,show.legend=FALSE)+
+geom_text(data = full.model.AUC, aes(x=0.615, y=0.052,label = label[4],colour=model[4]), inherit.aes=FALSE, check_overlap = TRUE,show.legend=FALSE)+
+  annotate("text", x = 0.5, y = 0.53, label = "Radom Classifier", color="gray", size=4 , angle=45, fontface="bold")+
+  geom_point(x=0,y=1, color="black", size=6)+geom_point(x=0,y=1, color="black", size=6)+geom_point(x=0.050,y=1, color="black", size=6)+geom_point(x=0,y=1, color="black", size=6)+
+  geom_point(x=0,y=1, color="#E7B800", size=5)+geom_point(x=0,y=1, color="#00BFC4", size=5, )+geom_point(x=0.050,y=1, color="#7CAE00", size=5)+geom_point(x=0,y=1, color="#F8766D", size=5)
+
+picture.full.models
+
+#ROCs FOR CROSS VALDIDATED MODEL
+#Models
+regularized.LR.cv.class.data
+LDA.cv.class.data
+rf.cv.class.data
+knn.cv.class.data
+
+#preparing the data
+cv.models<- data.frame((rbind(regularized.LR.cv.class.data,LDA.cv.class.data,rf.cv.class.data,knn.cv.class.data)), Model=stack(data.frame(rep("Logistic Regression", 79),rep("LDA", 79), rep("Random Forest", 79),rep("kNN (k=5)", 79)))[,1])
+cv.models$Model <- factor(cv.models$Model, levels = c("Logistic Regression", "LDA", "Random Forest", "kNN (k=5)"))
+
+#Building the roc curves
+cv.rocs <- ggplot(cv.models, aes(m = denticulata, d = obs, color=Model)) + 
+  geom_roc(increasing = FALSE, labels = TRUE, n.cuts = 0, size=2,linejoin = "round", lineend="round")+
+  coord_equal()+
+  geom_abline(colour='gray')+
+  xlab("False Positive Rate") + 
+  ylab("True Positive Rate")+
+  theme(plot.title = element_text(hjust = 0.5),legend.text = element_text(size=15, vjust=1),
+        legend.title = element_text(size=20),legend.title.align = 0.61, legend.key.width= unit(4, 'cm'),
+        panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        panel.background = element_blank(),axis.line = element_line(), legend.position = c(0.725,0.15),
+        legend.background = element_blank(),legend.key=element_blank(), legend.box.background = element_rect(colour = "gray", fill="transparent"))+
+  scale_color_manual(values = c("#E7B800", "#00BFC4", "#7CAE00","#F8766D")) 
+
+cv.AUC<- cv.rocs %>% calc_auc() %>% 
+  select(Model, AUC) %>% 
+  transmute(Model=Model, AUC=round(AUC,3)) %>% 
+  transmute(Model=Model, AUC=glue("AUC={AUC}"))%>%
+  rename(model=Model, label= AUC)
+
+#Evaluating youden points
+plot(pROC::roc(regularized.LR.cv.class.data$obs, predictor=regularized.LR.cv.class.data$denticulata), print.thres="best",print.thres.best.method="youden")
+plot(pROC::roc(LDA.cv.class.data$obs, predictor=LDA.cv.class.data$denticulata), print.thres="best",print.thres.best.method="youden")
+plot(pROC::roc(rf.cv.class.data$obs, predictor=rf.cv.class.data$denticulata), print.thres="best",print.thres.best.method="youden")
+plot(pROC::roc(knn.cv.class.data$obs, predictor=knn.cv.class.data$denticulata), print.thres="best",print.thres.best.method="youden")
+
+
+cv.youden.points<- data.frame(j.cv.LR=0.522, j.cv.LDA=0.404, j.cv.RF=0.666, j.cv.kNN=0.5)
+round(cv.youden.points, 2)
+
+
+picture.cv.models <- cv.rocs+
+geom_text(data = cv.AUC, aes(x=0.615, y=0.152,label = label[1],colour=model[1]), inherit.aes=FALSE, check_overlap = TRUE,show.legend=FALSE)+
+geom_text(data = cv.AUC, aes(x=0.615, y=0.119,label = label[2],colour=model[2]), inherit.aes=FALSE, check_overlap = TRUE,show.legend=FALSE)+
+geom_text(data = cv.AUC, aes(x=0.615, y=0.085,label = label[3],colour=model[3]), inherit.aes=FALSE, check_overlap = TRUE,show.legend=FALSE)+
+geom_text(data = cv.AUC, aes(x=0.593, y=0.052,label = label[4],colour=model[4]), inherit.aes=FALSE, check_overlap = TRUE,show.legend=FALSE)+
+  annotate("text", x = 0.5, y = 0.53, label = "Radom Classifier", color="gray", size=4 , angle=45, fontface="bold")+geom_point(x=0,y=0.95, color="black", size=6)+geom_point(x=0.05,y=0.95, color="black", size=6)+geom_point(x=0.067,y=1, color="black", size=6)+geom_point(x=0,y=1, color="black", size=6)+
+  geom_point(x=0,y=0.95, color="#E7B800", size=5)+geom_point(x=0.05,y=0.95, color="#00BFC4", size=5, )+geom_point(x=0.067,y=1, color="#7CAE00", size=5)+geom_point(x=0,y=1, color="#F8766D", size=5)
+
+picture.cv.models 
+
+#END
+```
