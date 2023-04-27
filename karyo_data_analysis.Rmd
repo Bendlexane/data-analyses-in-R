@@ -1,0 +1,154 @@
+---
+title: "Karyological data analysis"
+author: "Manuel Tiburtini"
+date: '2023-01-20'
+output: html_document
+---
+
+# Introduction
+
+This code is part of the karyological data analysis conducted in Tiburtini et al., 2023 link.
+
+In this section, karyological asymetry data measured on 91 seeds individual from 14 populations are being analyzed.
+
+# Data explanation
+
+The raw data set consists in 91 individuals x 4 karyological indices. Moreover, position of the centromere and presence of satellites are listed. Factor includes COD_LOC mean the locality acronym name, SPECIE to species level and TAXON include subspecies rank.
+
+### Features description
+
+1.  THL : Total Haploid Length.
+2.  CVCI: measuring how heterogeneous are centromeres positions in a karyotype.
+3.  CVCL: quantifying interchromosomal and karyotype asymmetry,
+4.  MCA: quantifying intrachromosomal karyotype asymmetry.
+5.  m : number of metacentric chromosomes.
+6.  sm : number of submetacentric chromosomes.
+7.  st : number of subtelocentric chromosomes.
+8.  satelliti : presence of satellites on the short arm.
+
+```{r setup, data import and cleaning}
+library(tidyverse)
+
+karyo <-  read.csv("/Users/manueltiburtini/Desktop/Dottorato/Armeria\ sardo-Corsa/Analisi\ dati\ Tiburtini\ et\ al.\ 2023/Karyology/karyo.csv", sep=",", stringsAsFactors = TRUE)
+
+karyo <- karyo %>% select(-COD_CAGL,-note,-X,-X.1) 
+
+karyo
+```
+
+```{r descriptive statistics}
+
+#Descriptive statistics by COD_LOC: mean and standard deviation
+karyo %>% 
+    select(-TAXON,-SPECIE,-HYP_5, -Vetrino,-Piastra,-x,-X2n, COD_LOC,THL,CVCI,CVCL,MCA,-m,-sm,-st,-satelliti) %>% 
+  group_by(COD_LOC) %>% 
+  reframe(across(everything(), 
+                 list(comb = ~ paste(sprintf("%.2f", mean(.x)), 
+                                     sprintf("%.2f", sd(.x)), sep = " ± ")))) %>%
+  pivot_longer(cols = -COD_LOC, names_to = c(".value", "variable"), 
+               names_sep = "_") %>% 
+  rename_with(~ str_remove(., "_comb"), contains("_comb")) %>% 
+  as.tibble() %>% select(-variable)
+
+#Descriptive statistics by COD_LOC:  sample size
+karyo %>% 
+  select(-TAXON,-SPECIE,COD_LOC,THL,CVCI,CVCL,MCA) %>% 
+  group_by(COD_LOC) %>% 
+  summarize(n=n()) %>% 
+  write.csv(., "descriptive_karyo_stat.csv")
+
+#frequency of chromosome type
+karyo %>% 
+  select(m,sm,st) %>% 
+  summarize(sum_m=sum(m),sum_sm=sum(sm),sum_st=sum(st), n=sum(sum_m,sum_sm,sum_st)) %>% 
+  mutate(freq_m = sum_m / sum(n),freq_sm = sum_sm / sum(n),freq_st = sum_st / sum(n))
+
+#number of satellites
+karyo %>% 
+  select(COD_LOC, satelliti) %>% 
+  filter(satelliti=="SI")
+
+#mean size
+karyo %>% 
+  select(THL,x) %>% 
+  mutate(size=THL/x) %>% 
+  summarize(mean=mean(size), dev.st=sd(size))
+
+```
+
+```{r normality test}
+
+karyo %>%
+  select(-TAXON,-SPECIE,-HYP_5, -Vetrino,-Piastra,-x,-X2n, COD_LOC,THL,CVCI,CVCL,MCA,-m,-sm,-st,-satelliti) %>% 
+  group_by(COD_LOC) %>% 
+  summarise(sw_THL = rstatix::shapiro_test(THL)$p.value,
+            sw_CVCI = rstatix::shapiro_test(CVCI)$p.value,
+            sw_CVCL = rstatix::shapiro_test(CVCL)$p.value,
+            sw_MCA = rstatix::shapiro_test(MCA)$p.value) %>% 
+  filter(sw_THL <0.05 |sw_CVCI <0.05 | sw_CVCL <0.05 |sw_MCA <0.05) 
+
+```
+
+```{r MCA-CVCL scatterplot}
+library(ggforce)
+library(ggplot2)
+
+ggplot(karyo, aes(MCA, CVCL, color=SPECIE,shape=COD_LOC)) + geom_point(size=2)+
+geom_mark_hull(aes(color = SPECIE , group=SPECIE),expand = unit(0, "mm"),radius = unit(0, "mm"), concavity=20)+
+   scale_shape_manual(values = c(1,2,3,4,5,6,7,8,9,10,11,12,13,14,15)) +
+  scale_color_manual(values = c("#E84D6B", "#EEBA0B", "#FF8E3C", "#C59ED8", "#AFD958", "#5BAFD9")) +
+  theme_bw() +
+ylab(bquote(CV[CL]))+xlab(bquote(M[CA]))+ theme(axis.text.x = element_text(size = 10),axis.text.y = element_text(size = 10)) # + stat_ellipse(type = "t", linetype = 2, level = 0.99)
+```
+
+```{r univariate pairwise permutation test }
+library(rcompanion)
+
+alpha <- 0.01
+#for subspecies
+karyo %>% 
+  reframe(Comparison=pairwisePermutationTest(CVCL ~ TAXON, data   = ., method = "BH",  alternative="two.sided")$Comparison,
+    THL=pairwisePermutationTest(THL ~ TAXON, data   = ., method = "BH",  alternative="two.sided")$p.adjust, 
+            CVCL=pairwisePermutationTest(CVCL ~ TAXON, data   = ., method = "BH",  alternative="two.sided")$p.adjust,
+            CVCI=pairwisePermutationTest(MCA ~ TAXON, data   = ., method = "BH",  alternative="two.sided")$p.adjust,
+            MCA=pairwisePermutationTest(MCA ~ TAXON, data   = ., method = "BH",  alternative="two.sided")$p.adjust) %>% 
+filter(THL < alpha |CVCI < alpha | CVCL < alpha |MCA < alpha)
+  
+#per taxon
+karyo_subset %>% 
+  reframe(Comparison=pairwisePermutationTest(CVCL ~ SPECIE, data   = ., method = "BH",  alternative="two.sided")$Comparison,
+    THL=pairwisePermutationTest(THL ~ SPECIE, data   = ., method = "BH",  alternative="two.sided")$p.adjust, 
+            CVCL=pairwisePermutationTest(CVCL ~ SPECIE, data   = ., method = "BH",  alternative="two.sided")$p.adjust,
+            CVCI=pairwisePermutationTest(MCA ~ SPECIE, data   = ., method = "BH",  alternative="two.sided")$p.adjust,
+            MCA=pairwisePermutationTest(MCA ~ SPECIE, data   = ., method = "BH",  alternative="two.sided")$p.adjust) %>% 
+filter(THL <alpha |CVCI <alpha | CVCL <alpha |MCA <alpha)
+
+#ALPHA 0.05
+#for subspecies
+
+karyo %>% 
+  reframe(Comparison=pairwisePermutationTest(CVCL ~ TAXON, data   = ., method = "BH",  alternative="two.sided")$Comparison,
+    THL=pairwisePermutationTest(THL ~ TAXON, data   = ., method = "BH",  alternative="two.sided")$p.adjust, 
+            CVCL=pairwisePermutationTest(CVCL ~ TAXON, data   = ., method = "BH",  alternative="two.sided")$p.adjust,
+            CVCI=pairwisePermutationTest(MCA ~ TAXON, data   = ., method = "BH",  alternative="two.sided")$p.adjust,
+            MCA=pairwisePermutationTest(MCA ~ TAXON, data   = ., method = "BH",  alternative="two.sided")$p.adjust) %>% filter(THL <0.05 |CVCI <0.05 | CVCL <0.05 |MCA <0.05) %>% 
+    write.csv(., "significance_katyo.csv")
+  
+#per species
+karyo_subset %>% 
+  reframe(Comparison=pairwisePermutationTest(CVCL ~ SPECIE, data   = ., method = "BH",  alternative="two.sided")$Comparison,
+    THL=pairwisePermutationTest(THL ~ SPECIE, data   = ., method = "BH",  alternative="two.sided")$p.adjust, 
+            CVCL=pairwisePermutationTest(CVCL ~ SPECIE, data   = ., method = "BH",  alternative="two.sided")$p.adjust,
+            CVCI=pairwisePermutationTest(MCA ~ SPECIE, data   = ., method = "BH",  alternative="two.sided")$p.adjust,
+            MCA=pairwisePermutationTest(MCA ~ SPECIE, data   = ., method = "BH",  alternative="two.sided")$p.adjust) %>% 
+filter(THL <0.05 |CVCI <0.05 | CVCL <0.05 |MCA <0.05)
+
+#new circumscriptions
+karyo %>% 
+  reframe(Comparison=pairwisePermutationTest(CVCL ~ HYP_5, data   = ., method = "BH",  alternative="two.sided")$Comparison,
+    THL=pairwisePermutationTest(THL ~ HYP_5, data   = ., method = "BH",  alternative="two.sided")$p.adjust, 
+            CVCL=pairwisePermutationTest(CVCL ~ HYP_5, data   = ., method = "BH",  alternative="two.sided")$p.adjust,
+            CVCI=pairwisePermutationTest(MCA ~ HYP_5, data   = ., method = "BH",  alternative="two.sided")$p.adjust,
+            MCA=pairwisePermutationTest(MCA ~ HYP_5, data   = ., method = "BH",  alternative="two.sided")$p.adjust) %>% filter(THL <alpha |CVCI <alpha | CVCL <alpha |MCA <alpha) 
+
+```

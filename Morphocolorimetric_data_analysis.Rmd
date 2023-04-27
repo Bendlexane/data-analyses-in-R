@@ -1,0 +1,594 @@
+---
+title: "Morphocolorimetric data analysis"
+authors: "Manuel Tiburtini"
+date: "January 2023"
+output:
+  html_document: default
+  pdf_document: default
+editor_options:
+  markdown:
+    wrap: 72
+---
+
+## Introduction
+
+This code is part of the data analysis for Tiburtini et al., 2023
+[link](doi).
+
+In this section, morphocolorimetric data of seeds from each population
+under study are being analysed. Digital images of 100 seeds for each
+accession were acquired using a flatbed scanner (Epson Perfection V550
+photo), with a digital resolution of 1200 dpi. When an accession had
+fewer than 100 seeds, the analysis was carried out on the whole batch
+available. Seeds were randomly disposed on the scanner tray, so that
+they did not touch one another: each accession was scanned twice, first
+covered with a white and then a black background to avoid interference
+from environmental light. Images were segmented using the software
+package ImageJ v. 1.53v.
+
+## Data explanation
+
+The dataset consists in 1446 seeds x 27 seed morphometric variables.
+
+### Features description
+
+1.  Perim: Perimeter, calculated from the centres of the boundary
+    pixels.
+
+2.  Area : Area inside the polygon defined by the perimeter.
+
+3.  Pixels : Number of pixels forming the endocarp image.
+
+4.  MinR : Radius of the inscribed circle centred at the middle of the
+    seed.
+
+5.  MaxR : Radius of the enclosing circle centred at the middle of the
+    seed.
+
+6.  Feret : Largest axis length.
+
+7.  Breadth : Largest axis perpendicular to the Feret.
+
+8.  CHull : Convex hull or convex polygon calculated from pixel centres.
+
+9.  CArea : Area of the convex hull polygon.
+
+10. MBCRadius : Radius of the minimal bounding circle .
+
+11. AspRatio : Aspect ratio = Feret/Breadth.
+
+12. Circ : Circularity = 4·π·Area/Perimeter2.
+
+13. Roundness : Roundness = 4·Area/(π·Feret2).
+
+14. ArEquivD : Area equivalent diameter = √((4/π)·Area).
+
+15. PerEquivD : Perimeter equivalent diameter = Area/π.
+
+16. EquivEllAr : Equivalent ellipse area = (π·Feret·Breadth)/4.
+
+17. Compactness : Compactness = √((4/π)·Area)/Feret.
+
+18. Solidity : Solidity = Area/Convex_Area.
+
+19. Concavity : Concavity = Convex_Area-Area.
+
+20. Convexity : Convexity = Convex_hull/Perimeter.
+
+21. Shape : Shape = Perimeter2/Area .
+
+22. RFactor : RFactor = Convex_Hull /(Feret·π).
+
+23. ModRatio : Modification ratio = (2·MinR)/Feret.
+
+24. Sphericity : Sphericity = MinR/MaxR.
+
+25. ArBBox : Area of the bounding box along the feret diameter =
+    Feret·Breadth.
+
+26. Rectang : Rectangularity = Area/ArBBox.
+
+## Data analysis
+
+### Data exploration
+
+Data import
+
+```{r, data import}
+
+morfocol <-read.csv("~/Desktop/Dottorato/Armeria sardo-Corsa/Analisi dati Tiburtini et al. 2023/Morfocolorimetria/morfocolorimetria_sardo_corse.csv", stringsAsFactors = TRUE)
+
+summary(morfocol)
+
+```
+
+Data filtering and subsetting
+
+```{r , data subsetting}
+
+library(tidyverse)
+
+#LC stands for locus classicus populations 
+LC <- c("BS" , "CB"  ,"MCA", "ML",  "MO",  "MR",  "MS",  "RE",  "SP"  ,"TH" )
+#N_LC stands for non locus classicus populations
+N_LC <- c("AR", "BU" ,"FO", "GO")
+
+morfocol_LC <- morfocol %>% filter(COD_LOC %in% LC)
+morfocolN_LC <- morfocol %>% filter(COD_LOC %in% N_LC)
+
+```
+
+
+
+```{r Data summary}
+
+str(morfocol)
+dim(morfocol)
+
+```
+
+
+```{r Correlation among features}
+library(caret)
+
+morfocol.cor<- cor(morfocol[,-c(1:3)])
+summary(morfocol.cor[upper.tri(morfocol.cor)])
+
+library(corrplot)
+corrplot(morfocol.cor, title="Visualizing Correlation among features")
+
+```
+
+Scaling and centering the data
+
+```{r, data centering and scaling}
+library(caret)
+# data centering and scaling
+trans <- preProcess(morfocol[,-c(1:3)], method = c("center", "scale"))
+
+# use predict() function to get the final result
+morfocol_scaled <- predict(trans, morfocol[,-c(1:3)])
+
+morfocol_scaled <- cbind(morfocol[,c(1:3)], morfocol_scaled)
+
+#data
+morfocol_scaled
+```
+
+```{r missingness }
+library(mice)
+
+mice::md.pattern(morfocol_scaled) #fully observed
+```
+
+
+```{r Covariance visualization and normality }
+library(heplots)#covariance ellipses
+library(RVAideMemoire)#multivariate normality
+
+heplots::covEllipses(morfocol_scaled[,-c(1:3)], group=morfocol$SPECIE, variables = 1:4)
+heplots::covEllipses(morfocol_scaled[,-c(1:3)], group=morfocol$SPECIE, variables = 5:10)
+heplots::covEllipses(morfocol_scaled[,-c(1:3)], group=morfocol$SPECIE, variables = 11:15)
+heplots::covEllipses(morfocol_scaled[,-c(1:3)], group=morfocol$SPECIE, variables = 16:20)
+heplots::covEllipses(morfocol_scaled[,-c(1:3)], group=morfocol$SPECIE, variables = 21:25)
+
+#homogeneity of covariance is violated.
+
+
+#multivariate normality
+
+mqqnorm(morfocol_scaled[,-c(1:6)], main = "Multi-normal Q-Q Plot")#whole
+byf.mqqnorm(HYP_5~., morfocol_scaled[,-c(1:3)])#by factor
+
+#NOT MULTIVARIATE NORMAL
+```
+
+Uninformative variables removal
+
+```{r data cleaning}
+require(caret)
+library(tidyverse)
+library(robustHD) 
+
+nearZeroVar(morfocol_scaled, saveMetrics= TRUE)
+#CountCorrect is removed since has only 0.27 of the values differ, i.e. no information
+
+morfocol_scaled <- morfocol_scaled %>% select(-CountCorrect)
+
+#NOT USED 
+#DATA FRAME WINSORIZATION
+
+morfocol_scaled_winsorized <- morfocol_scaled %>% 
+  dplyr::select(-TAXON,-SPECIE,-HYP_5) %>% 
+  group_by(COD_LOC) %>%
+  mutate(across(everything(), winsorize)) %>% 
+  ungroup() %>% 
+  dplyr::select(-COD_LOC) %>% 
+  dplyr::select(-where(~ any(is.nan(.)))) %>% 
+  cbind(morfocol_scaled[,c(1:4)], .)
+
+```
+
+#### Dimentionality reduction
+
+```{r Linear dimentionality reduction: Exploratory Factor Analysis}
+library(fossil) #Tri.ineq
+require(dplyr) 
+library(psych) #KMO 
+library(ape)
+
+#suitability for factor analysis
+psych::KMO(morfocol_scaled[,-c(1,2,3)]) # miserable, poorly suitable for factor analysis
+
+morfocol.dist<- morfocol_scaled[,-c(1:3)] %>% 
+  dist(., method = "manhattan")
+
+ade4::is.euclid(morfocol.dist) # FALSE
+
+#the data are not euclidean
+morfocol.pcoa <- morfocol.dist %>% 
+  ape::pcoa(correction =  "cailliez") #correction applied
+
+#Explained variance
+pcoa.morfocol.variance <- round(morfocol.pcoa$values$Eigenvalues/sum(morfocol.pcoa$values$Eigenvalues)*100, 4)
+
+#Barplot explained variance
+barplot(pcoa.morfocol.variance, main="Variaza spiegata dagli assi dalla PCoA", sub="% della Varianza", col= c("#9DE199"))
+
+#PCOA at species level since Normality is not required
+morfocol.pcoa$vectors %>% 
+  as.tibble() %>% 
+  ggplot(., aes(x= Axis.1, y= Axis.2, color=morfocol_scaled$SPECIE))+ 
+           geom_point() + 
+   theme(legend.title =  element_text(hjust = 0.5,
+                                     size=15),
+        legend.text = element_text(hjust = 0.5,
+                                   size=15),
+        axis.text = element_text(size = 15, 
+                                 colour = "black"), 
+        axis.title = element_text(size = 15))+
+  theme_bw() + 
+  xlab(paste("Coord. 1 (",pcoa.morfocol.variance[1],"%)")) +
+  ylab(paste("Coord. 2 (",pcoa.morfocol.variance[2],"%)")) + 
+  theme(panel.grid = element_blank(), 
+        legend.title = element_text(hjust = 0.5), axis.text = element_text(size = 15, colour = "black"),
+        axis.title = element_text(size = 10, face = "bold"))+
+  guides(color=guide_legend(title="Species"))
+
+
+#PCOA at locality level
+morfocol.pcoa$vectors %>% 
+  as.tibble() %>% 
+  ggplot(., aes(x= Axis.1, y= Axis.2, color=morfocol_scaled$COD_LOC))+ 
+           geom_point() + 
+   theme(legend.title =  felement_text(hjust = 0.5,
+                                     size=15),
+        legend.text = element_text(hjust = 0.5,
+                                   size=15),
+        axis.text = element_text(size = 15, 
+                                 colour = "black"), 
+        axis.title = element_text(size = 15))+
+  theme_bw() + 
+  xlab(paste("Coord. 1 (",pcoa.morfocol.variance[1],"%)")) +
+  ylab(paste("Coord. 2 (",pcoa.morfocol.variance[2],"%)")) + 
+  theme(panel.grid = element_blank(), 
+        legend.title = element_text(hjust = 0.5), axis.text = element_text(size = 15, colour = "black"),
+        axis.title = element_text(size = 10, face = "bold"))+
+  guides(color=guide_legend(title="Species"))
+```
+
+
+Non linear dimentionality reduction (UMAP) produces unstable results
+when tuned.
+
+### Features selection \| Random Forest Cross-Validation for feature selection
+
+```{r Feature selection}
+
+library(randomForest)
+library(caret)
+
+#fit 5 different random forest models
+result <- replicate(5, rfcv(morfocol_scaled[,-c(1:3)], morfocol_scaled$SPECIE, cv.fold=5), simplify=FALSE)
+
+#assessing the error of each of the five model
+error.cv <- sapply(result, "[[", "error.cv")
+
+#plot results
+matplot(result[[1]]$n.var, cbind(rowMeans(error.cv), error.cv), type="l",
+        lwd=c(2, rep(1, ncol(error.cv))), col=1, lty=1, log="x",
+        xlab="Number of variables", ylab="CV Error")
+
+#there are only 5-6 variables that really matters. 
+```
+
+Random Forest Model fitting and tuning
+
+Hyperparameter to be tuned:
+
+-   **n_estimators**: The number of decision trees in the random forest.
+    (ntree hyperparameter)
+
+-   **max_depth**: The number of splits that each decision tree is
+    allowed to make. If the number of splits is too low, the model
+    underfits the data and if it is too high the model overfits.
+    Generally, we go with a max depth of 3, 5, or 7. (nodesize
+    hyperparameter)
+
+-   **max_features**: The number of columns that are shown to each
+    decision tree. The specific features that are passed to each
+    decision tree can vary between each decision tree. (mtry
+    hyperparameter)
+
+-   **Bootstrap**: A bootstrapped model takes only a select subset of
+    columns and rows to train each decision tree. Thus the model becomes
+    less prone to overfitting the data. ( repeated cross validation is
+    used instead to check fitting)
+
+```{r assessing unbalance among classes}
+
+morfocol_LC %>% 
+  group_by(COD_LOC) %>% 
+  summarize(n=n()) %>% 
+  mutate(freq=round((freq = n / sum(n))*100,2))
+
+#classes unbalanced
+
+```
+
+```{r using alternative multiclass summari statistics to mitigate class unbalance}
+library(caret)
+
+#loading ROC for multiclass classification 
+require(compiler)
+#Based on caret:::twoClassSummary
+multiClassSummary <- cmpfun(function (data, lev = NULL, model = NULL){
+  #Load Libraries
+  require(Metrics)
+  require(caret)
+  #Check data
+  if (!all(levels(data[, "pred"]) == levels(data[, "obs"])))
+    stop("levels of observed and predicted data do not match")
+  #Calculate custom one-vs-all stats for each class
+  prob_stats <- lapply(levels(data[, "pred"]), function(class){
+    #Grab one-vs-all data for the class
+    pred <- ifelse(data[, "pred"] == class, 1, 0)
+    obs <- ifelse(data[, "obs"] == class, 1, 0)
+    prob <- data[,class]
+
+    #Calculate one-vs-all AUC and logLoss and return
+    cap_prob <- pmin(pmax(prob, .000001), .999999)
+    prob_stats <- c(auc(obs, prob), logLoss(obs, cap_prob))
+    names(prob_stats) <- c('ROC', 'logLoss')
+    return(prob_stats)
+  })
+  prob_stats <- do.call(rbind, prob_stats)
+  rownames(prob_stats) <- paste('Class:', levels(data[, "pred"]))
+  #Calculate confusion matrix-based statistics
+  CM <- confusionMatrix(data[, "pred"], data[, "obs"])
+  #Aggregate and average class-wise stats
+  #Todo: add weights
+  class_stats <- cbind(CM$byClass, prob_stats)
+  class_stats <- colMeans(class_stats)
+
+  #Aggregate overall stats
+  overall_stats <- c(CM$overall)
+  #Combine overall with class-wise stats and remove some stats we don't want
+  stats <- c(overall_stats, class_stats)
+  stats <- stats[! names(stats) %in% c('AccuracyNull',
+                                       'Prevalence', 'Detection Prevalence')]
+  #Clean names and return
+  names(stats) <- gsub('[[:blank:]]+', '_', names(stats))
+  return(stats)
+}) 
+
+```
+
+
+```{r, echo=FALSE}
+require(rpart)
+require(caret) #model tuning
+library(randomForest)
+require(utils)#expand grid
+library(MLmetrics)
+
+set.seed(825) # setting for reproducible results 
+
+#parallel computing for fast computing
+library(doParallel)
+cores <- makeCluster(detectCores()-1)
+registerDoParallel(cores = cores)
+
+#model setting: grid search of hyperparameter used, cross validated leave one group out used.
+model.ctrl <- trainControl(
+  method = "LGOCV", #cv method
+  number = 10, #10 k fold cross validation
+  p = 0.75, # training percentage
+  verboseIter = FALSE,
+  returnData = TRUE,
+  returnResamp = "final",
+  savePredictions = "final",
+  classProbs = TRUE,
+  summaryFunction = multiClassSummary,
+  selectionFunction = "best", #selecting the model that maximize accuracy
+  allowParallel = TRUE #parallel computing on
+  )
+
+# tuning mtry 
+tuneGrid <- expand.grid(.mtry=c(1:20))
+```
+
+```{r fitting the model}
+knitr::opts_chunk$set(cache = TRUE)
+
+rf.mod<- train(morfocol[,-c(1,2,3,14)], #CountCorrect removed
+               morfocol$TAXON,#grouping variable
+  importance=TRUE,
+ntree=750, nodesize=3, # default setting produced poor result, adjusting the bias-variance tradoff
+  method = "rf",
+  preProcess =  c("center", "scale"), # scaling the data
+  metric = "Mean_Balanced_Accuracy",
+  trControl = model.ctrl,
+  tuneGrid = tuneGrid)
+
+```
+
+```{r confusion matrix the optimal model}
+#confusion matrix
+confusionMatrix(data=rf.mod$finalModel$predicted, reference=morfocol$TAXON)
+
+#exporting the final confusion matrix of the model
+write.csv(rf.mod$finalModel$confusion, "~/Desktop/Dottorato/Armeria sardo-Corsa/Analisi dati Tiburtini et al. 2023/Morfocolorimetria/rf.mod_confusion_matrix.csv")
+
+
+```
+
+```{r RF important features}
+library(randomForest)
+
+data.frame(sort(rf.mod$finalModel$importance[,12]))
+
+varImpPlot(rf.mod$finalModel, main="Random Forest Variables Importance Plot")
+
+```
+
+#### Boxplots of the most important features
+
+```{r Boxplot and summary table of descriptive statistics}
+require(tidyverse)
+
+for (i in colnames(morfocol[,-c(1,2,3,4)])){
+    boxplot(morfocol[[i]]~COD_LOC, data=morfocol, las=1, cex.axis=0.6, main=i)
+}
+
+#descriptive statistics
+morfocol %>% 
+  group_by(COD_LOC)  %>%
+  select(COD_LOC, CHull, MBCRadius, Feret, Concavity, MaxR) %>% 
+  summarise(across(everything(), list(Mean=mean,dev.st=sd))) %>% 
+  as_tibble() %>% 
+  write.csv(., "~/Desktop/Dottorato/Armeria sardo-Corsa/Analisi dati Tiburtini et al. 2023/Morfocolorimetria/descriptive_morfocol_stat2.csv")
+
+```
+
+## HBDSCAN* clustering
+
+Hyperparameters of the model (see [DBSCAN Parameter
+Estimation](https://medium.com/@tarammullin/dbscan-parameter-estimation-ff8330e3a3bd)
+for further details)
+
+1.  Minimum samples ("MinPts"): the fewest number of points required to
+    form a cluster. Generally, MinPts should be greater than or equal to
+    the dimensionality of the data set.
+
+2.  ε (epsilon or "eps"): the maximum distance two points can be from
+    one another while still belonging to the same cluster. in HDBSCAN,
+    this is automatically determined.
+
+```{r creating the model}
+knitr::opts_chunk$set(cache = TRUE)
+library(dbscan) 
+
+morfocol.dist # full data used
+
+#finding the optimal values
+npoints <- c(2:50)
+noisepoints <- vector("list", 50)
+cluster <- vector("list", 50)
+for (points in npoints){
+  hdbscan.mod <- 
+  hdbscan(morfocol.dist,
+  minPts=points,
+  gen_hdbscan_tree = TRUE,
+  gen_simplified_tree = FALSE,
+  verbose = FALSE)
+  noisepoints[[points]] <- length(which(ifelse(hdbscan.mod$cluster==0, TRUE, FALSE)==TRUE))
+  cluster[[points]] <- length(unique(hdbscan.mod$cluster))
+}
+
+mod.selection<- data.frame(minPoint=c(1:49), noisepoints, cluster)
+
+#we selected the minpoint that minimize noise points and numer of cluster and is greater than 27. best model with 30 minPoints
+
+hdbscan.final.mod <- 
+  hdbscan(morfocol.dist,
+  minPts=30,
+  gen_hdbscan_tree = TRUE,
+  gen_simplified_tree = FALSE,
+  verbose = FALSE)
+
+```
+
+```{r visualizing cluster on the first 2 axes of pcoa}
+morfocol.pcoa$vectors %>% 
+  as.tibble() %>% 
+  ggplot(., aes(x= Axis.1, y= Axis.2, color=as.factor(hdbscan.final.mod$cluster),alpha=(hdbscan.final.mod$membership_prob)))+ 
+           geom_point() +scale_color_manual(values=c("#000000","#5E72EB", "#FF9190"), 
+                    breaks = as.factor(c("0","1","2")),labels=c('Noise', '1',"2"))+
+   theme(legend.title =  element_text(hjust = 0.5,
+                                     size=15),
+        legend.text = element_text(hjust = 0.5,
+                                   size=15),
+        axis.text = element_text(size = 15, 
+                                 colour = "black"), 
+        axis.title = element_text(size = 15))+
+  theme_bw() + 
+  xlab(paste("Coord. 1 (",pcoa.morfocol.variance[1],"%)")) +
+  ylab(paste("Coord. 2 (",pcoa.morfocol.variance[2],"%)")) + 
+  theme(panel.grid = element_blank(), 
+        legend.title = element_text(hjust = 0.5), axis.text = element_text(size = 15, colour = "black"),
+        axis.title = element_text(size = 10, face = "bold"))+
+  guides(color=guide_legend(title="Cluster"),alpha=guide_legend(title="Membership probability"))+ geom_contour()
+
+```
+
+```{r}
+#cluster score stability
+hdbscan.mod$cluster_scores
+
+plot(hdbscan.mod, show_flat = T, gradient = c("#5E72EB","#FF9190"))
+```
+
+## Conclusion
+
+The data posses only two underling stable groups find by HDBSCAN, with
+no clear distinction among species and subspecies except for A.
+sulcitana and A. sardoa subsp. gennargentea, especially within A.
+leucocephala and A. multiceps.
+
+
+```{r univariate plot and selection of seed morphometric features}
+library(tidyverse)
+library(agricolae) #Load the Tukey-Kramer HSD function from the agricolae package
+
+#Boxplots of 5 most important features
+boxplot(CHull~HYP_5, data=morfocol)
+boxplot(Feret~HYP_5, data=morfocol)
+boxplot(MBCRadius~HYP_5, data=morfocol)
+boxplot(MaxR~HYP_5, data=morfocol)
+boxplot(Breadth~HYP_5, data=morfocol)
+
+
+#computing trimmed mean to reduce effects of OLs
+morfocol %>% 
+  group_by(HYP_5) %>% 
+  select(Feret) %>% 
+  na.omit() %>% 
+  summarise(Mean = mean(Feret, trim = 0.3), st.dev = sd(Feret)) #trimmed mean
+
+#checking Cohen's D
+pairw.cohen <- list()
+for (i in names(morfocol[,-c(1:4)])){
+  pairw.cohen[[i]] <- print(i)
+  pairw.cohen[[i]] <- morfocol[,-c(1:3)] %>%
+     mutate(HYP_5=fct_collapse(HYP_5, LEUCO="Armeria_leucocephala", SULC_SARD = c("Armeria_sulcitana","Armeria_sardoa"))) %>% 
+    filter(HYP_5 %in% c("LEUCO","SULC_SARD")) %>% 
+    droplevels.data.frame() %>% 
+  esvis::coh_d(as.formula(paste0(i, " ~ HYP_5")), data=.) %>% 
+  transmute(FST_G=HYP_5_ref, SCD_G=HYP__foc_foc, coh_D= abs(coh_d), coh_se) %>% 
+  filter(coh_D>1) 
+}
+pairw.cohen <- purrr::keep(pairw.cohen, ~ any(.>1))
+
+```
+

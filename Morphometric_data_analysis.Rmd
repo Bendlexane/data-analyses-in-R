@@ -1,0 +1,895 @@
+---
+title: "Morphometric_data_analysis"
+author: "Manuel Tiburtini"
+date: "2023-03-24"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction
+
+This code is part of the morphometric data analysis for Tiburtini et al., 2023 [link](doi).
+
+In this section, morphometric data measured on 192 individual from 14 populations are being analyzed.
+
+## Data explanation
+
+The raw dataset consists in 192 individuals x 53 plant morphometric variables. Some variable were removed.
+
+### Features description
+
+1\. SPINE : Spine presence on the calyx awn (yes/no)
+
+2\. AWN : Awn presence on the calyx's limb (yes/no)
+
+2\. PAP : presence of papillae on leaves (yes/no)
+
+3\. CALYX_HAIRINESS : Calyx hairiness (holotrichous/pleurotrichous)
+
+4\. CALYX_VEINS : Number of calyx veins with hairs (10/5)
+
+5\. DIMORP : Leaf dimorphism (yes/no)
+
+6\. WAVY : Is the margin ondulate? (yes/no)
+
+7\. INNER_BRACT_HAIR : Presence of hairs on inner bract (yes/no)
+
+8\. MAR_SUM_LEAF : Margin of the summer leaf (hyaline/dentate)
+
+9\. MAR_WIN_LEAF : Margin of the winter leaf (hyaline/dentate)
+
+10\. OUTER_BRACT_HAIR : Presence of hairs on outer bract (yes/no)
+
+11\. SUM_LEAF_APEX : Shape of the summer leaf apex (acute/cucullate)
+
+12\. VEINS_HAIRS : Presence of hairs along the leaf veins (yes/no)
+
+13\. WIN_LEAF_APEX : Shape of the winter leaf apex (acute/cucullate)
+
+14\. COL_PET : Petal color (white/pink)
+
+15\. GEN_SHAPE_OUT_SCAL : Shape of the outer scale (deltate\<triangular\<strictly triangular)
+
+16\. SHAPE_APEX_INN_SCALE : Shape of the inner scale apex (round\<acute\<mucronate\<apiculate)
+
+17\. SHAPE_APEX_INT_SCALE : Shape of the intermediate scale apex (round\<acute\<mucronate\<apiculate)
+
+18\. SHAPE_APEX_OUT_SCALE : Shape of the outer scale apex (acute\<mucronate\>apiculate\<acuminated\<subulate\<long subulate)
+
+19\. ANG_SUM_TIP : Summer leaf tip angle (°)
+
+20\. ANG_WIN_TIP : Winter leaf tip angle (°)
+
+21\. AWN_LENG : Awn length (mm)
+
+22\. DIAM_CAP : Capitulum diameter (mm)
+
+23\. HEIGTH : Plant height (mm)
+
+24\. LENG_CAL \_PED : Calyx pedicel length (mm)
+
+25\. LENG_CAL_TUBE : Calyx tube length (mm)
+
+26\. LENG_INNER_SCAL : Length of the involucral inner scale (mm)
+
+27\. LENG_INNER_SPI_BRACLE : Length of the inner spikelet bracteole (mm)
+
+28\. LENG_INNER_SPI_BRACT : Length of the inner spikelet bract (mm)
+
+29\. LENG_INTER_SCAL : Length of the involucral intermediate scale (mm)
+
+30\. LENG_OUT_SCAL : Length of the involucral outer scale (mm)
+
+31\. LENG_OUTER_SPI_BRACLE : Length of the outer spikelet bracteole (mm)
+
+32\. LENG_OUTER_SPI_BRACT : Length of the outer spikelet bract (mm)
+
+33\. LENG_SUM_LEAF : Summer leaf length (mm)
+
+34\. LENG_WIN_LEAF : Winter leaf length (mm)
+
+35\. LIMB_LENG : Limb length (mm)
+
+36\. SCA_DIAM : Scape diameter at 1 cm from the base (mm)
+
+37\. SCA_LENG : Scape length (mm)
+
+38\. SHEATH_LENG : Sheath length (mm)
+
+39\. WIDTH_CAL_TUBE : Width below the calyx tube limb (mm)
+
+40\. WIDTH_IAL_SUM : Width of the hyaline margin in summer leaf (mm)
+
+41\. WIDTH_IAL_WIN : Width of the hyaline margin in winter leaf (mm)
+
+42\. WIDTH_INNER_SCAL : Width of the involucral inner scale (mm)
+
+43\. WIDTH_INNER_SPI\_ BRACT : Width of the inner spikelet bract (mm)
+
+44\. WIDTH_INNER_SPI_BRACLE : Width of the inner spikelet bracteole (mm)
+
+45\. WIDTH_INTER_SCAL : Width of the involucral intermediate scale (mm)
+
+46\. WIDTH_OUT_SCAL : Width of the involucral outer scale (mm)\
+47. WIDTH_OUTER_SPI\_ BRACT : Width of the outer spikelet bract (mm)
+
+48\. WIDTH_OUTER_SPI_BRATLE : Width of the outer spikelet bracteole (mm)
+
+49\. WIDTH_SUM_LEAF : Width of the summer leaf at the middle (mm)
+
+50\. WIDTH_WIN_LEAF : Width of the winter leaf at the middle (mm)
+
+51\. N_SCALES : Number of involucral scales
+
+52\. N_SUM_VEINS : Number of veins (with sclerenchyma) of summer leaf
+
+53\. SCAP_NUM : Number of scapes
+
+```{r, data import}
+ morfometria_sardo_corse <- read.csv("~/Desktop/Dottorato/Armeria sardo-Corsa/Analisi dati Tiburtini et al. 2023/morfometria/morfometria_sardo_corse.csv", stringsAsFactors = TRUE)
+
+setwd("~/Desktop/Dottorato/Armeria sardo-Corsa/Analisi dati Tiburtini et al. 2023/morfometria")
+```
+
+Some variables resulted to be statistically untreatable and not so informative, we drop them.
+
+```{r data preparation and cleaning}
+library(caret)
+library(tidyverse)
+
+#dropping messy variables from the dataset
+morfometria_sardo_corse <- morfometria_sardo_corse %>% 
+  dplyr::select(-SHAPE_APEX_IN_SCALE,-SHAPE_APEX_INT_SCALE,-SHAPE_APEX_OUT_SCALE,
+                -GEN_SHAPE_OUT_SCAL, -WAVY)
+
+#dropping uninformative variable
+featzerovar <- caret::nearZeroVar(morfometria_sardo_corse[,-c(1:10)], freqCut = 2,
+  uniqueCut = 20)
+
+
+morfometria_sardo_corse <- morfometria_sardo_corse[,-featzerovar[c(4:10)]]
+
+```
+
+```{r Outliers detection}
+library(univOutl)
+
+morfometria_sardo_corse %>% 
+  select(where(is.numeric),-SERIAL)
+
+outliers <- list()
+for (colname in colnames(morfometria_sardo_corse %>% select(where(is.numeric),-SERIAL))){
+   outliers[[colname]] <- LocScaleB(x = morfometria_sardo_corse[[colname]] ,  k = 5, method="IQR", id=morfometria_sardo_corse$ID)$outliers
+}
+
+#some outliers have been corrected remeasuring the plants
+```
+
+```{r exploring the missing values distribution}
+library(mice)
+
+md.pattern(morfometria_sardo_corse, rotate.names = TRUE)
+```
+
+```{r univariate data visualization: pairplots, boxplot and mosaicplots}
+library(tidyverse)
+library(GGally)
+
+morfometria_sardo_corse %>% 
+  select(TAXA_CODE, where(is.numeric), -SERIAL)  
+
+#visualizing data
+GGally::ggpairs(morfometria_sardo_corse %>% 
+  select(TAXA_CODE, where(is.numeric), -SERIAL), columns = 2:10, ggplot2::aes(colour=TAXA_CODE))
+
+GGally::ggpairs(morfometria_sardo_corse %>% 
+  select(TAXA_CODE, where(is.numeric), -SERIAL), columns = 10:20, ggplot2::aes(colour=TAXA_CODE))
+
+GGally::ggpairs(morfometria_sardo_corse %>% 
+  select(TAXA_CODE, where(is.numeric), -SERIAL), columns = 20:30, ggplot2::aes(colour=TAXA_CODE))
+
+#exploring univariate data
+#Categorical
+
+catego.vars <- morfometria_sardo_corse %>% 
+  select(TAXA_CODE, where(is.factor), -TAXON,-ID, -SAR_CODE, -LOC_NAM, -Regione, -LOC_CODE,-SPECIE) %>% 
+  mutate(HYP_5=attribuzione$HYP_5)
+
+for (colname in colnames(catego.vars[,-1])){
+  print(colname)
+  mosaicplot(HYP_5~catego.vars[[colname]], data=catego.vars, color=TRUE, main=colname )
+}
+
+data <- morfometria_sardo_corse %>% 
+  select(LOC_CODE, where(is.numeric), -SERIAL)
+
+#Numerical
+for (colname in colnames(
+ data)) {
+boxplot(data[[colname]]~LOC_CODE, data=data, main=colname, cex.axis=0.4)
+}
+
+```
+
+```{r multivariate data visualization}
+library(tidyverse)
+library(REdaS)
+
+morfometria_sardo_corse %>% 
+  select(where(is.numeric), -SERIAL) %>% 
+  .[-144,] %>% 
+  psych::KMO() # Suitability for factor analysis
+
+morfometria_sardo_corse %>% 
+  select(where(is.numeric), -SERIAL) %>% 
+  .[-144,] %>% 
+  REdaS::bart_spher(., use="na.or.complete") # Suitability for factor analysis
+
+
+#computing explained variance
+sardo.corse.variance.PCOA <- morfometria_sardo_corse %>% 
+   .[,-c(1:10)] %>% 
+  FD::gowdis() %>% 
+  ape::pcoa(., correction = "cailliez") %>% 
+  .$values %>%
+  .$Eigenvalues %>% 
+  as_tibble %>% 
+  mutate(variance=value/sum(value)*100) %>% 
+  filter(variance>10) %>% 
+  dplyr::select(variance) %>% 
+  unlist() %>% 
+  as.vector()
+
+#plotting PCoA
+morfometria_sardo_corse %>%
+  .[-c(1:10)] %>% 
+  FD::gowdis() %>% 
+  ape::pcoa(., correction = "cailliez") %>%
+  .$vectors %>%  
+  as_tibble() %>% 
+  ggplot(aes(x = Axis.1, y = Axis.3)) +
+  geom_point(aes(shape = attribuzione$LOC_CODE, color = attribuzione$SPECIE_EST), size = 3.4) +
+  scale_shape_manual(values = c(1,2,3,4,5,6,7,8,9,10,11,12,13,14,15)) +
+  scale_color_manual(values = c("#E84D6B", "#EEBA0B", "#FF8E3C", "#C59ED8", "#AFD958", "#5BAFD9")) +
+  theme_bw() +
+  guides(color = guide_legend(order=1),
+         shape = guide_legend(order=2))+
+  labs(shape = "Localities", colour = "Taxa")+
+  xlab(paste("Coord. 1 (",round(sardo.corse.variance.PCOA[1],2),"%)")) + 
+  ylab(paste("Coord. 3 (",round(sardo.corse.variance.PCOA[3],2),"%)"))+
+  theme(panel.grid = element_blank(),
+    legend.title = element_text(hjust = 0.5), axis.text = element_text(size = 15, colour = "black"),legend.justification="left",
+    axis.title = element_text(size = 10, face = "bold")
+  )
+
+```
+
+```{r looking for natural cluster in data}
+library(dbscan)
+
+#Model Tuning
+noisepoints <- vector("list", 49)
+cluster <- vector("list", 49)
+for(i in 2:49){
+  clust<- morfometria_sardo_corse[,-c(1:10)] %>%  
+  cluster::daisy(., metric="gower") %>% 
+  dbscan::hdbscan(.,
+  minPts=i,
+  gen_hdbscan_tree = TRUE,
+  gen_simplified_tree = FALSE,
+  verbose = FALSE)
+  noisepoints[[i]] <- length(which(ifelse(clust$cluster==0, TRUE, FALSE)==TRUE))
+  cluster[[i]] <- length(unique(clust$cluster))
+}
+
+mod.selection <- data.frame(minPoint=c(1:59), noisepoints=unlist(noisepoints),  cluster=unlist(cluster))
+
+#chosen model
+hdbscan.morfomod<- morfometria_sardo_corse[,-c(1:10)] %>%  
+  cluster::daisy(., metric="gower") %>% 
+  dbscan::hdbscan(.,
+  minPts=4,
+  gen_hdbscan_tree = TRUE,
+  gen_simplified_tree = FALSE,
+  verbose = FALSE)
+
+plot(hdbscan.morfomod, show_flat = T) #there are 2 natural cluster and finer structure of 6 subcluster in the data.
+
+```
+
+```{r, visulizing groups with LDA}
+library(MASS)
+library(mltools)
+library(data.table)
+library(dplyr)
+library(ggplot2)
+
+morfometria_sardo_corse %>% 
+  dplyr::select(-SERIAL,-ID,-SAR_CODE,-LOC_NAM,-LOC_CODE,-TAXA_CODE,-SPECIE,-TAXON, 
+         -Regione,-LOC_CL) %>% 
+  droplevels.data.frame() %>% 
+  dplyr::select(where(is.factor)) %>% 
+  cleandata::encode_binary(., out.int=TRUE, full_print=FALSE) %>% #encode variable 
+  data.frame(., morfometria_sardo_corse %>%
+  dplyr::select(where(is.numeric),-SERIAL, LOC_CODE)) %>% 
+  mice::cc() %>% 
+  droplevels.data.frame() %>% 
+  .[,-c(2,9,11,12)] %>%  #dropping collinear variables
+  MASS::lda(LOC_CODE~., data=.) %>% 
+  predict() %>% 
+  .$x %>% 
+  data.frame(.,  LOC_CODE=cbind(morfometria_sardo_corse, attribuzione$LOC_CODE)
+                                     %>%  mice::cc() %>%  dplyr::select(LOC_CODE)) %>%
+  ggplot(., aes(x = LD1, y = LD2, color=LOC_CODE)) +
+  geom_point( size = 3.4) +
+   scale_shape_manual(values = c("#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd",
+            "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf",
+            "#ffbb78", "#98df8a", "#ff9896", "#c5b0d5")) + 
+  theme_bw() +
+  xlab(paste("LD1 (37.28%)")) + 
+  ylab(paste("LD2 (17.22%)")) +
+  theme(panel.grid = element_blank(),
+    legend.title = element_text(hjust = 0.5), axis.text = element_text(size = 15, colour = "black"),
+    axis.title = element_text(size = 10, face = "bold")
+  ) + stat_ellipse(type = "t", linetype = 2, level = 0.95, show.legend = FALSE) #Confidence intervals
+```
+
+```{r, univariate data anaylsis}
+library(rcompanion)
+library(tidyverse)
+
+#numeric variable completely observed variables
+morfometria_sardo_corse_num <- morfometria_sardo_corse %>% 
+  select(TAXA_CODE, where(is.numeric),-SERIAL)
+
+a.sign <- 0.01 #setting alpha 
+univ.sar.cors.matrix.num.obs<- list()
+for(i in colnames(morfometria_sardo_corse_num)){
+   if(is.numeric(morfometria_sardo_corse_num[[i]])==TRUE){
+       if(sum(is.na(morfometria_sardo_corse_num[i]))!=0){next
+       } else {print(i) 
+          permtest.num.obs<- pairwisePermutationMatrix(x=morfometria_sardo_corse_num[[i]],
+                           g=morfometria_sardo_corse_num$TAXA_CODE, method="BY")
+          permtest.num.obs$Adjusted[upper.tri(permtest.num.obs$Adjusted)] <- NA
+          diss.matrix.num.obs<- ifelse((permtest.num.obs$Adjusted<a.sign)==TRUE, as.numeric("1"), as.numeric("0"))
+          diss.matrix.num.obs[is.na(diss.matrix.num.obs)] <- 0
+          univ.sar.cors.matrix.num.obs[[i]] <- diss.matrix.num.obs
+          partial.matrix.num.obs<- Reduce('+', univ.sar.cors.matrix.num.obs)
+      }
+   }
+}
+
+#numeric variable with NA observed
+univ.sar.cors.matrix.num.na <- list()
+morfometria_sardo_corse_num_na <- morfometria_sardo_corse_num
+for (j in names(which(colSums(is.na(morfometria_sardo_corse_num_na))!=0)==TRUE)) {
+             print(j)
+             na.row <- which(is.na(morfometria_sardo_corse_num_na[j]))
+             permtest.num.na <- pairwisePermutationMatrix(x=morfometria_sardo_corse_num_na[j][-na.row,],
+                            g=droplevels(morfometria_sardo_corse_num_na$TAXA_CODE[-na.row]), method="BY")
+             permtest.num.na$Adjusted[upper.tri(permtest.num.na$Adjusted)] <- NA
+             diss.matrix.num.na <- ifelse((permtest.num.na$Adjusted<a.sign)==TRUE, as.numeric("1"), as.numeric("0"))
+             diss.matrix.num.na[is.na(diss.matrix.num.na)] <- 0
+             univ.sar.cors.matrix.num.na[[j]] <- diss.matrix.num.na
+}
+
+
+#Categorical variables
+morfometria_sardo_corse_fact<- morfometria_sardo_corse %>% 
+  select(TAXA_CODE, where(is.factor),-ID, -SAR_CODE, -LOC_NAM, -LOC_CODE, -SPECIE, -TAXON, -Regione)
+
+
+univ.sar.cors.fact<- list()
+for(p in colnames(morfometria_sardo_corse_fact[,-1])){
+   print(p)
+   nominal.test<- pairwiseNominalMatrix(
+table(morfometria_sardo_corse_fact$TAXA_CODE,morfometria_sardo_corse_fact[[p]]),
+  compare = "row",
+  fisher = TRUE,
+  gtest = FALSE,
+  chisq = FALSE,
+  method = "BY",
+  correct = "none",
+  digits = 3)
+   nominal.test$Adjusted[upper.tri(nominal.test$Adjusted)] <- NA
+             diss.matrix.fact <- ifelse((nominal.test$Adjusted<a.sign)==TRUE, as.numeric("1"), as.numeric("0"))
+             diss.matrix.fact[is.na(diss.matrix.fact)] <- 0
+             univ.sar.cors.fact[[p]] <- diss.matrix.fact
+}
+
+#melting the 3 different matrices
+
+definitive.matrix.univariate <- Reduce('+', c(univ.sar.cors.matrix.num.na,univ.sar.cors.fact,univ.sar.cors.matrix.num.obs))
+
+row
+as.data.frame(sort(colSums(definitive.matrix.univariate)+rowSums(definitive.matrix.univariate)))
+
+
+```
+
+```{r plotting univariate analysis results}
+
+
+ade4::is.euclid(dist(definitive.matrix.univariate)) #TRUE
+
+plot(Bclust(definitive.matrix.univariate, iter=10000, method.d="euclidean"), hang=-0.5)
+
+library(plotly)
+library(RColorBrewer)
+
+data <- definitive.matrix.univariate[,-10]
+x <- colnames(definitive.matrix.univariate[,-10])
+y <- rownames(definitive.matrix.univariate[,-10])
+
+df = data.frame(data)
+colnames(df) = x
+rownames(df) = y
+df = df %>% 
+  rownames_to_column("y") %>% 
+  reshape::melt(id.vars = "y")
+
+pal <- colorRampPalette(brewer.pal(9, "YlOrRd"))(29)
+pal[1] <-c("#FFFFFF")
+
+
+plot_ly(z = data, 
+         x = x,
+         y = y,
+         text = data,
+        type = "heatmap",
+        hoverinfo='none',
+        colors = pal, height=670, width=700, xgap=10, ygap=10) %>%  
+  add_annotations(
+    data = df,
+    x = ~variable, 
+    y = ~y, 
+    text = ~value, 
+    xref = 'x', 
+    yref = 'y', 
+    showarrow = FALSE, 
+    font=list( family = "times",
+  size = 14,
+  color = 'black')) %>% 
+  layout(xaxis = list(color="#FFFFFF", labels), yaxis=list(color="#FFFFFF"), legend=list(title=list(text='Pairwise differences')))
+
+#further editing done manual
+```
+
+Conclusion, in Sardinia and Corsica there are only 2 clear cluster composted by A. morisii e all the other plants, meaning that they share many morphological features. In second position the A. solerolii is the second most distinguishable species, since is the only one with papillae on the leaves and given its peculiar habitat and isolation. All the others can be clustered in one group. However, the phylogeny support the idea of something more. We investigated deeply within the Armeria multiceps, Armeria leucocephala and Armeria sardoa the variablity and the wortiness of the subspecies rank ( not shown) and concluded that its not worth of it. Thus we tested 1) the hypothesis of just considering all the taxa just at species level and 2) melting the Corsican taxa -excluding A. soleirolii - in just one entity and Armeria sardoa as single entity.
+
+```{r importing the set of alternative hypotheses}
+attribuzione <- read.csv("~/Desktop/Dottorato/Armeria sardo-Corsa/Analisi dati Tiburtini et al. 2023/morfometria/attribuzione.csv", stringsAsFactors=TRUE)
+```
+
+```{r,  multiClassSummary function to compute multiclass classification metrics from GitHub}
+library(caret)
+
+#loading ROC for multiclass classification 
+require(compiler)
+#Based on caret:::twoClassSummary
+multiClassSummary <- cmpfun(function (data, lev = NULL, model = NULL){
+  #Load Libraries
+  require(Metrics)
+  require(caret)
+  #Check data
+  if (!all(levels(data[, "pred"]) == levels(data[, "obs"])))
+    stop("levels of observed and predicted data do not match")
+  #Calculate custom one-vs-all stats for each class
+  prob_stats <- lapply(levels(data[, "pred"]), function(class){
+    #Grab one-vs-all data for the class
+    pred <- ifelse(data[, "pred"] == class, 1, 0)
+    obs <- ifelse(data[, "obs"] == class, 1, 0)
+    prob <- data[,class]
+
+    #Calculate one-vs-all AUC and logLoss and return
+    cap_prob <- pmin(pmax(prob, .000001), .999999)
+    prob_stats <- c(auc(obs, prob), logLoss(obs, cap_prob))
+    names(prob_stats) <- c('ROC', 'logLoss')
+    return(prob_stats)
+  })
+  prob_stats <- do.call(rbind, prob_stats)
+  rownames(prob_stats) <- paste('Class:', levels(data[, "pred"]))
+  #Calculate confusion matrix-based statistics
+  CM <- confusionMatrix(data[, "pred"], data[, "obs"])
+  #Aggregate and average class-wise stats
+  #Todo: add weights
+  class_stats <- cbind(CM$byClass, prob_stats)
+  class_stats <- colMeans(class_stats)
+
+  #Aggregate overall stats
+  overall_stats <- c(CM$overall)
+  #Combine overall with class-wise stats and remove some stats we don't want
+  stats <- c(overall_stats, class_stats)
+  stats <- stats[! names(stats) %in% c('AccuracyNull',
+                                       'Prevalence', 'Detection Prevalence')]
+  #Clean names and return
+  names(stats) <- gsub('[[:blank:]]+', '_', names(stats))
+  return(stats)
+}) 
+```
+
+```{r Knn models for species comparisons}
+library(caret) #for ML algorithm
+library(dplyr) #dataprocessing
+library(cleandata) #categoriacal data convertion
+
+#ARRIGONI
+morfometria_sardo_corse_arrigoni <- morfometria_sardo_corse %>% 
+  dplyr::select(-SERIAL,-ID,-SAR_CODE,-LOC_NAM,-LOC_CODE,-TAXA_CODE,-SPECIE,-TAXON, 
+         -Regione,-LOC_CL, -AWN,-CALYX_VEINS) %>% droplevels.data.frame() %>% 
+  dplyr::select(where(is.factor)) %>% 
+  cleandata::encode_binary(., out.int=TRUE, full_print=FALSE) %>% 
+  data.frame(., scale(morfometria_sardo_corse %>%
+  dplyr::select(where(is.numeric),-SERIAL))) %>% mutate(TAXA_CODE = morfometria_sardo_corse$TAXA_CODE, .before = VEINS_HAIRS) %>% 
+  mice::cc() %>% 
+  droplevels.data.frame()
+
+
+ade4::is.euclid(dist(morfometria_sardo_corse_arrigoni[,-1])) #checking if the data are euclidean - TRUE
+
+
+## Define control function to handle optional arguments for train function
+## Models to be assessed based on largest absolute area under ROC curve
+cv.ctrl <- trainControl(method = "LOOCV",
+                        summaryFunction = multiClassSummary,
+                        classProbs = TRUE)
+
+## tuning k grid 
+tune.grid <- expand.grid(.k=1:20)
+
+#Model tuning
+knn.tune <- train(TAXA_CODE ~ .,
+                  data = morfometria_sardo_corse_arrigoni,
+                  method = "knn",
+                  metric = 'Balanced_Accuracy',
+                  trControl = cv.ctrl,
+                  preProcess = c("center", "scale"),
+                  tuneGrid = tune.grid)
+
+
+#filtering just the best model
+final.model<- knn.tune$pred %>% 
+  filter(k==knn.tune$bestTune$k) %>% 
+  dplyr::select(pred, obs)
+
+
+confusionMatrix(data=final.model$pred, reference=final.model$obs)
+write.csv(prova$table, file="confusion_arrigoni_sard-corse.csv"
+)
+
+#fulldataset 0.977 AUC accuracy = 0.8571
+
+################################################################################
+#SPECIE LEVEL 
+
+
+morfometria_sardo_corse_final <- morfometria_sardo_corse %>% 
+  dplyr::select(-SERIAL,-ID,-SAR_CODE,-LOC_NAM,-LOC_CODE,-TAXA_CODE,-SPECIE,-TAXON, 
+         -Regione,-LOC_CL, -AWN,-OUTER_BRACT_HAIR) %>% droplevels.data.frame() %>% 
+  dplyr::select(where(is.factor)) %>% 
+  cleandata::encode_binary(., out.int=TRUE, full_print=FALSE) %>% 
+  data.frame(., scale(morfometria_sardo_corse %>%
+  dplyr::select(where(is.numeric),-SERIAL))) %>% 
+  mutate(SPECIE=attribuzione$SPECIE, .before=VEINS_HAIRS) %>% 
+  mice::cc() %>% 
+  droplevels.data.frame()
+
+
+## Define control function to handle optional arguments for train function
+## Models to be assessed based on largest absolute area under ROC curve
+cv.ctrl <- trainControl(method = "LOOCV",
+                        summaryFunction = multiClassSummary,
+                        classProbs = TRUE)
+
+## tuning k grid 
+tune.grid <- expand.grid(.k=1:20)
+
+
+#Model tuning
+knn.tune <- train(SPECIE ~ .,
+                  data = morfometria_sardo_corse_final,
+                  method = "knn",
+                  metric = 'Balanced_Accuracy',
+                  trControl = cv.ctrl,
+                  preProcess = c("center", "scale"),
+                  tuneGrid = tune.grid)
+
+#filtering just the best model
+knn.tune
+final.model<- knn.tune$pred %>% 
+  filter(k==knn.tune$bestTune$k) %>% 
+  dplyr::select(pred, obs)
+
+confusionMatrix(data=final.model$pred, reference=final.model$obs)
+
+
+################################################################################
+# new attribution
+
+#HYPOTHESIS 5 - final hypothesis 
+ 
+Ipotesi.sardo.corse$HYP_5
+dplyr::sel
+
+morfometria_sardo_corse_final <- 
+  morfometria_sardo_corse %>% 
+  .[,-c(1:10,39,40,48)] %>% 
+  droplevels.data.frame() %>% 
+  dplyr::select(where(is.factor)) %>% 
+  cleandata::encode_binary(., out.int=TRUE, full_print=FALSE) %>% 
+  data.frame(., scale(morfometria_sardo_corse %>%
+  dplyr::select(where(is.numeric),-SERIAL))) %>% 
+  mutate(HYP_5=attribuzione$HYP_5, .before=VEINS_HAIRS) %>% 
+  mice::cc() %>% 
+  droplevels.data.frame()
+
+
+## Define control function to handle optional arguments for train function
+## Models to be assessed based on largest absolute area under ROC curve
+cv.ctrl <- trainControl(method = "LOOCV",
+                        summaryFunction = multiClassSummary,
+                        classProbs = TRUE)
+
+## tuning k grid 
+tune.grid <- expand.grid(.k=1:20)
+
+#Model tuning
+knn.tune <- train(HYP_5 ~ .,
+                  data = morfometria_sardo_corse_final,
+                  method = "knn",
+                  metric = 'Balanced_Accuracy',
+                  trControl = cv.ctrl,
+                  preProcess = c("center", "scale"),
+                  tuneGrid = tune.grid)
+
+
+#filtering just the best model
+final.model<- knn.tune$pred %>% 
+  dplyr::filter(k==knn.tune$bestTune$k) %>% 
+  dplyr::select(pred, obs)
+
+confusionMatrix(data=final.model$pred, reference=final.model$obs)
+```
+
+In the last part, we build the identification vkey on the new circumscription using Cohen's D, Mosaic plots and Random Forest's most representative tree to structure the key.
+
+```{r measuring the degree of separateness of numeric values using Cohen s D}
+library(rstatix)
+library(GGally)
+
+morfometria_sardo_corse_num <- 
+  morfometria_sardo_corse %>%
+  droplevels.data.frame() %>% 
+  select(where(is.numeric), -SERIAL) %>%
+  mutate(HYP_5=attribuzione$HYP_5, ., .before=HEIGTH) %>% 
+  mice::cc()
+
+
+#testing normality
+morfometria_sardo_corse_num %>%
+  group_by(HYP_5) %>%  
+  dplyr::select(-N_SUM_VEINS) %>% 
+  summarize(across(everything(), ~ shapiro.test(.)$p.value),
+  .groups = "drop") %>% 
+  filter()
+
+#visualizing data
+GGally::ggpairs(morfometria_sardo_corse_num, columns = 2:10, ggplot2::aes(colour=HYP_5))
+GGally::ggpairs(morfometria_sardo_corse_num, columns = 10:20, ggplot2::aes(colour=HYP_5))
+GGally::ggpairs(morfometria_sardo_corse_num, columns = 20:30, ggplot2::aes(colour=HYP_5))
+
+
+pairw.cohen <- list()
+for (i in names(morfometria_sardo_corse_num[,-1])){
+  pairw.cohen[[i]] <- print(i)
+  pairw.cohen[[i]] <- morfometria_sardo_corse_num %>%
+  esvis::coh_d(as.formula(paste0(i, " ~ HYP_5")), data=.) %>% 
+  transmute(FST_G=HYP_5_ref, SCD_G=HYP__foc_foc, coh_D= abs(coh_d), coh_se) %>% 
+  filter(coh_D>3) 
+}
+pairw.cohen<- purrr::keep(pairw.cohen, ~ any(.>6))
+pairw.cohen
+```
+
+```{r Random Forest most representative tree }
+#loading required packages
+library(randomForest)
+
+
+options(repos='http://cran.rstudio.org')
+have.packages <- installed.packages()
+cran.packages <- c('devtools','plotrix','randomForest','tree')
+to.install <- setdiff(cran.packages, have.packages[,1])
+if(length(to.install)>0) install.packages(to.install)
+
+library(devtools)
+if(!('reprtree' %in% installed.packages())){
+  install_github('munoztd0/reprtree')
+}
+for(p in c(cran.packages, 'reprtree')) eval(substitute(library(pkg), list(pkg=p)))
+
+library(reprtree)
+
+#data prep
+morfometria_sardo_corse_final <- 
+  morfometria_sardo_corse %>% 
+  dplyr::select(-SERIAL,-ID,-SAR_CODE,-LOC_NAM,-LOC_CODE,-TAXA_CODE,-SPECIE,-TAXON, 
+         -Regione,-LOC_CL) %>% 
+  droplevels.data.frame() %>% 
+  dplyr::select(where(is.factor)) %>% 
+  cleandata::encode_binary(., out.int=TRUE, full_print=FALSE) %>% 
+  data.frame(., morfometria_sardo_corse %>%
+  dplyr::select(where(is.numeric),-SERIAL)) %>% 
+  mutate(HYP_5=attribuzione$HYP_5, .before=VEINS_HAIRS) %>% 
+  mice::cc() %>% 
+  droplevels.data.frame()
+
+
+model <- randomForest(HYP_5 ~ ., data=morfometria_sardo_corse_final, importance=TRUE, ntree=1000, mtry = 5.64, do.trace=100) #mtry from a tuned random forest model
+
+plot(reprtree:::ReprTree(model,morfometria_sardo_corse_final[,-1]))
+```
+
+```{r exploring univariate data}
+
+#Categorical
+catego.vars <- morfometria_sardo_corse %>% 
+  select(-TAXA_CODE, where(is.factor), -TAXON,-ID, -SAR_CODE, -LOC_NAM, -Regione, -LOC_CODE,-SPECIE) %>% 
+  mutate(HYP_5=attribuzione$HYP_5)
+
+for (colname in colnames(catego.vars[,-1])){
+  print(colname)
+  mosaicplot(HYP_5~catego.vars[[colname]], data=catego.vars, color=TRUE, main=colname )
+}
+
+data <- morfometria_sardo_corse %>% 
+  select(-LOC_CODE, where(is.numeric), -SERIAL) %>% 
+    mutate(HYP_5=attribuzione$HYP_5)
+
+#Numerical
+for (colname in colnames(
+ data)) {
+boxplot(data[[colname]]~HYP_5, data=data, main=colname, cex.axis=0.4)
+}
+
+```
+
+```{r searching mean values for characters in id. key}
+
+morfometria_sardo_corse_final %>% 
+  group_by(HYP_5) %>% 
+  select(WIDTH_INTER_SCAL) %>% 
+  summarise(mean=mean())
+
+morfometria_sardo_corse_final %>%
+  group_by(HYP_5) %>%
+  summarise(mean = mean(LENG_INNER_SPI_BRACT), 
+            sd=sd(LENG_INNER_SPI_BRACT))
+
+data <- morfometria_sardo_corse %>% 
+  select(where(is.numeric), -SERIAL) %>% 
+    mutate(HYP_5=attribuzione$HYP_5) %>% 
+  droplevels.data.frame()
+
+
+```
+
+```{r #exploring univariate data}
+  
+#Categorical
+catego.vars <- morfometria_sardo_corse %>% 
+  select(-TAXA_CODE, where(is.factor), -TAXON,-ID, -SAR_CODE, -LOC_NAM, -Regione, -LOC_CODE,-SPECIE) %>% 
+  mutate(HYP_5=attribuzione$HYP_5)
+
+for (colname in colnames(catego.vars[,-1])){
+  print(colname)
+  mosaicplot(HYP_5~catego.vars[[colname]], data=catego.vars, color=TRUE, main=colname )
+}
+
+data <- morfometria_sardo_corse %>% 
+  select(-LOC_CODE, where(is.numeric), -SERIAL) %>% 
+    mutate(HYP_5=attribuzione$HYP_5)
+
+#Numerical
+for (colname in colnames(
+ data)) {
+boxplot(data[[colname]]~HYP_5, data=data, main=colname, cex.axis=0.4)
+}
+```
+
+Computing descriptive statistics table for the new circumscription
+
+```{r descriptive statistics table}
+morfometria_sardo_corse %>% 
+  mutate(HYP_5 = attribuzione$HYP_5) %>% 
+  select(HYP_5, where(is.numeric), -SERIAL) %>% 
+  mice::cc() %>% 
+  group_by(HYP_5) %>% 
+  summarize(n)
+
+
+morfometria_sardo_corse %>% 
+  mutate(HYP_5 = attribuzione$HYP_5) %>% 
+  select(HYP_5, where(is.numeric), -SERIAL) %>% 
+  mice::cc() %>% 
+  group_by(HYP_5) %>%
+  reframe(across(everything(), 
+                 list(comb = ~ paste(sprintf("%.2f", mean(.x)), 
+                                     sprintf("%.2f", sd(.x)), sep = " ± ")))) %>%
+  pivot_longer(cols = -HYP_5, names_to = c(".value", "variable"), 
+               names_sep = "-") %>% 
+  rename_with(~ str_remove(., "_comb"), contains("_comb")) %>% 
+  as.tibble() %>% 
+  write.csv(., "~/Desktop/Dottorato/Armeria sardo-Corsa/Analisi dati Tiburtini et al. 2023/Morfocolorimetria/descriptive_morfocol_stat2.csv")
+```
+
+```{r buiding contingency tables for characters used in the identification key}
+
+options(scipen=9999)
+library(rcompanion)
+library(dplyr)
+library(multcompView)
+
+table(morfometria_sardo_corse$MAR_SUM_LEAF, attribuzione$HYP_5) %>% 
+ rcompanion::pairwiseNominalIndependence(
+  .,
+  compare = "column",
+  fisher = TRUE,
+  gtest = FALSE,
+  chisq = FALSE,
+  method = "BY",
+  correct = "none",
+  stats = FALSE,
+  cramer = FALSE,
+  digits = 3
+) %>% filter(p.adj.Fisher<0.01)
+
+table(morfometria_sardo_corse$PAP_CELL, attribuzione$HYP_5) %>% 
+ rcompanion::pairwiseNominalIndependence(
+  .,
+  compare = "column",
+  fisher = TRUE,
+  gtest = FALSE,
+  chisq = FALSE,
+  method = "BY",
+  correct = "none",
+  stats = FALSE,
+  cramer = FALSE,
+  digits = 3
+) %>% filter(p.adj.Fisher<0.01)
+
+table(morfometria_sardo_corse$DIMORP, attribuzione$HYP_5) %>% 
+ rcompanion::pairwiseNominalIndependence(
+  .,
+  compare = "column",
+  fisher = TRUE,
+  gtest = FALSE,
+  chisq = FALSE,
+  method = "BY",
+  correct = "none",
+  stats = FALSE,
+  cramer = FALSE,
+  digits = 3
+) %>% filter(p.adj.Fisher<0.01)
+
+table(morfometria_sardo_corse$VEINS_HAIRS, attribuzione$HYP_5) %>% 
+ rcompanion::pairwiseNominalIndependence(
+  .,
+  compare = "column",
+  fisher = TRUE,
+  gtest = FALSE,
+  chisq = FALSE,
+  method = "BY",
+  correct = "none",
+  stats = FALSE,
+  cramer = FALSE,
+  digits = 3
+) %>% 
+  filter(p.adj.Fisher<0.01)
+
+)
+
+```
