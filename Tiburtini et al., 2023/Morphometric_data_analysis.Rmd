@@ -11,7 +11,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ## Introduction
 
-This code is part of the morphometric data analysis for Tiburtini et al., 2023 [link](doi).
+This code is part of the morphometric data analysis for Tiburtini et al., 2023 [https://doi.org/10.3390/plants12112229)]
 
 In this section, morphometric data measured on 192 individual from 14 populations are being analyzed.
 
