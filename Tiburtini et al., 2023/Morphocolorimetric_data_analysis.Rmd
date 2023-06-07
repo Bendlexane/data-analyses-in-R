@@ -13,7 +13,7 @@ editor_options:
 ## Introduction
 
 This code is part of the data analysis for Tiburtini et al., 2023
-[link](doi).
+[https://doi.org/10.3390/plants12112229].
 
 In this section, morphocolorimetric data of seeds from each population
 under study are being analysed. Digital images of 100 seeds for each
