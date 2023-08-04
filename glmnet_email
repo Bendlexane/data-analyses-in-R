@@ -1,0 +1,174 @@
+setwd( "/Users/manueltiburtini/Desktop/Email\ test")
+
+#finding hardware capabilities 
+library(benchmarkme)
+get_cpu()
+get_ram()
+
+#install packages 
+install.packages("tidymodels")
+install.packages("dplyr")
+library(dplyr)
+library(tidyverse)
+library(tidymodels)
+library(doParallel)
+
+
+#import data 
+email <- read_csv("~/Desktop/Email test/emails.csv")
+
+
+
+#checking missingess
+library(mice)
+md.pattern(email) # completely observed
+
+
+#preparing the dataset 
+email <- email %>% 
+  dplyr::relocate(Prediction, .before = the) %>% 
+  mutate(Prediction = case_when(
+    Prediction == 0 ~ "ham",
+    Prediction == 1 ~ "spam"
+  )) %>% mutate(Prediction=as.factor(Prediction))
+
+
+
+
+#nice plots
+theme_set(theme_light())
+
+#PCoA for visualizing data
+library(ade4)
+email.pcoa<- email %>% 
+  dplyr::select(-`Email No.`,-Prediction) %>% bruceR::scaler(.) %>% 
+  dist(.,  method = "euclidean") %>% ape::pcoa(.) %>% 
+  .$vectors %>% 
+  as.tibble() %>% 
+  ggplot(., aes(x= Axis.1, y= Axis.2, color=email$Prediction))+ 
+  geom_point() 
+  #geom_text(label=email$`Email No.`)
+
+
+email_testvariance.pcoa <- email_test %>% 
+  dplyr::select(-"Email No.",-Prediction) %>% bruceR::scaler(.) %>% 
+  dist(.,  method = "euclidean") %>% ape::pcoa(.) %>% 
+  .$values %>%
+  .$Eigenvalues %>% 
+  as_tibble %>% 
+  mutate(variance=value/sum(value)*100) %>% 
+  filter(variance>10) %>% 
+  dplyr::select(variance) %>% 
+  unlist() %>% 
+  as.vector()
+
+
+email.pcoa
+
+
+#parallel computing
+doParallel::registerDoParallel(cores=12)
+
+#tidymodel: penalized logistic regression using glmnet
+
+#*Train/Test Split*
+  
+set.seed(191)
+email_split <- initial_split(email, strata = "Prediction")
+email_split
+
+#exploring dimensions of the training and testing
+
+email_train <- training(email_split)
+email_test <- testing(email_split)
+
+
+#assessing unbalace between classes
+email_train %>% 
+  select(Prediction) %>% count(Prediction) %>%
+  mutate(proportion = n / sum(n))
+
+email_test %>% 
+  select(Prediction) %>% count(Prediction) %>%
+  mutate(proportion = n / sum(n))
+
+
+########### MODEL TUNING ###################
+#finding tuning parameters 
+library(glmnet)
+
+email.cvglmnetfit <- cv.glmnet(x=as.matrix(email_train[,-c(1,2)]), y=email_train$Prediction,
+                   family = "binomial",
+                   type.measure = "auc", 
+                   nfolds = 5, parallel = TRUE)
+
+plot(email.cvglmnetfit)
+
+email.coeffs <- coef(email.cvglmnetfit, s = "lambda.min")
+email.coeffs <- data.frame(name = email.coeffs@Dimnames[[1]][email.coeffs@i + 1], coefficient = email.coeffs@x)
+
+bestlambda <- email.cvglmnetfit$lambda.min
+
+email.cvglmnetfit$lambda.min
+
+### set engine
+
+glmnet_model<- logistic_reg(penalty = bestlambda, mixture = 0) %>% 
+  set_engine("glmnet") %>% 
+  translate() %>% 
+  set_mode("classification")
+
+### Setup the Recipe
+
+email_recipe <- 
+  recipe(Prediction ~ ., data = email_train) %>% 
+  update_role(`Email No.`, new_role = "ID")
+
+#summary(email_recipe)
+
+# workflow
+
+### Set up the workflow
+
+email_workflow <- workflow() %>%
+  add_model(glmnet_model) %>%
+  add_recipe(email_recipe) 
+
+# fit the model
+
+doParallel::registerDoParallel(cores = 12)
+email.glmnet.fit<- email_workflow %>% 
+  fit(data = email_train)
+
+plot(email.glmnet.fit$post)
+#predict
+
+email.glmnet.predict.class<- predict(email.glmnet.fit, email_test)
+email.glmnet.predict.prob<- predict(email.glmnet.fit, email_test, type = "prob")
+
+email_test_pred <- bind_cols(
+  predicted=email.glmnet.predict.class, email.glmnet.predict.prob, actual=email_test$Prediction)
+
+#confusion matrix 
+caret::confusionMatrix(data=email_test_pred$.pred_class, reference=email_test_pred$actual)
+#F1score = 0.98
+MLmetrics::F1_Score(email_test_pred$actual, email_test_pred$.pred_class, positive = "ham") 
+
+
+#AUC 
+email_test_pred %>% 
+  roc_auc(truth = actual,
+          .pred_ham,
+          event_level = "first") 
+
+
+#ROC curve
+email_test_pred %>% 
+  roc_curve(truth = actual,
+          .pred_ham,
+          event_level = "first") %>% autoplot()
+
+#Accuracy 98.14%
+
+
+
