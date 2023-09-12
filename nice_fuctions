@@ -1,0 +1,7 @@
+#mutual information filter by class 
+ClassMI <- function(data, class, threshold){
+  require(infotheo)
+  mi_scores <- sapply(data, function(x) mutinformation(x, as.factor(class)))
+  selected_features <- list(scores=mi_scores,sel.features=names(mi_scores[mi_scores != threshold]))
+  return(selected_features)
+}
