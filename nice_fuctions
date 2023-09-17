@@ -5,3 +5,16 @@ ClassMI <- function(data, class, threshold){
   selected_features <- list(scores=mi_scores,sel.features=names(mi_scores[mi_scores != threshold]))
   return(selected_features)
 }
+
+
+
+
+
+# filter out outliers by class using tidyverse!
+require(rstatix)
+data %>%
+  select(class, where(is.numeric)) %>% 
+  group_by(class) %>%
+  mutate_at(vars(-class), ~ifelse(is_outlier(., coef = 2.5), NA, .)) %>%
+  ungroup() %>%
+  na.omit()
