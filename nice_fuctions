@@ -18,3 +18,10 @@ data %>%
   mutate_at(vars(-class), ~ifelse(is_outlier(., coef = 2.5), NA, .)) %>%
   ungroup() %>%
   na.omit()
+
+
+#scale data by class using tidyverse!
+data %>% 
+  group_by(class) %>%
+  mutate_at(vars(-class),list(~ scale(.))) %>% 
+  ungroup()
