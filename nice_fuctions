@@ -25,3 +25,21 @@ data %>%
   group_by(class) %>%
   mutate_at(vars(-class),list(~ scale(.))) %>% 
   ungroup()
+
+
+
+#relevel factor levels of a df into numebers and booleans for LCA
+data %>%
+  mutate(across(.cols = everything(), .fns = ~as.integer(factor(.))) %>%
+           mutate(across(.cols = everything(), .fns = ~if_else(. == 0, 1, .))))
+
+
+
+
+
+
+
+
+
+
+
