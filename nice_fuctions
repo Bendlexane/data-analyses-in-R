@@ -39,6 +39,97 @@ data %>%
 
 
 
+#CREATE A 3D SURFACE PLOT THAT SPINS AND ADD POINTS ON IT WITH DESCRIPTIONS 
+# Dati 
+x <-  surface$x
+y <-  surface$y
+z <- tanh(surface$z)
+
+# Creazione del surface plot 3D
+surface_plot <- plot_ly(x = x, y = y, z = z, type = "surface")
+
+
+
+# Coordinare dei punti
+gaussian_coords <- list(
+  list(x = -5.69, y = 5.709676480, z = 1, label = "Armeria gracilis s.l."),
+  list(x = -4.4, y = 5.35, z = 0.9, label = "Armeria gussonei"),
+  list(x = -6.04, y = 5.16, z = 0.7, label = "Armeria nebrodensis")
+)
+
+# Aggiunta delle gaussiane al plot come punti
+for (coords in gaussian_coords) {
+  surface_plot <- add_trace(
+    surface_plot,
+    type = "scatter3d",
+    mode = "markers+text",
+    x = coords$x,
+    y = coords$y,
+    z = coords$z,
+    text = coords$label,
+    showlegend = FALSE,
+    marker = list(size = 5)
+  )
+}
+
+
+# Visualizzazione del plot
+fig <- surface_plot %>% 
+  layout(
+    title = list(text='Morphospace from a Multivariate Finite Gaussian Mixture Model', y = 0.9, x = 0.5, xanchor = 'center', yanchor =  'top'),
+    scene = list(
+      xaxis = list(title = 'Dir1', range = c(-2, -8)),
+      yaxis = list(title = 'Dir2', range = c(2, 8)),
+      zaxis = list(title = 'Density'),
+      camera = list(
+        eye = list(x = 1.25, y = 1.25, z = 1.25),
+        center = list(x = 0,y = 0, z = 0)))) %>%
+  onRender("
+      function(el, x){
+  var id = el.getAttribute('id');
+  var gd = document.getElementById(id);
+  Plotly.update(id).then(attach);
+  function attach() {
+    var cnt = 0;
+    
+    function run() {
+      rotate('scene', Math.PI / 180);
+      requestAnimationFrame(run);
+    } 
+    run();
+    
+    function rotate(id, angle) {
+      var eye0 = gd.layout[id].camera.eye
+      var rtz = xyz2rtz(eye0);
+      rtz.t += angle;
+      
+      var eye1 = rtz2xyz(rtz);
+      Plotly.relayout(gd, id + '.camera.eye', eye1)
+    }
+    
+    function xyz2rtz(xyz) {
+      return {
+        r: Math.sqrt(xyz.x * xyz.x + xyz.y * xyz.y),
+        t: Math.atan2(xyz.y, xyz.x),
+        z: xyz.z
+      };
+    }
+    
+    function rtz2xyz(rtz) {
+      return {
+        x: rtz.r * Math.cos(rtz.t),
+        y: rtz.r * Math.sin(rtz.t),
+        z: rtz.z
+      };
+    }
+  };
+}
+    ")
+
+htmlwidgets::saveWidget(partial_bundle(fig), file = "rotate_surface3d.HTML", selfcontained = TRUE)
+
+utils::browseURL("rotate_surface3d.HTML")
+
 
 
 
